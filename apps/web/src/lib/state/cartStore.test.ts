@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cartReducer, computeCartTotalCents, initialCartState } from "./cartStore";
+import { MENU } from "../fixtures/menu";
 
 describe("cartReducer — AC2", () => {
   it("adds a new item with quantity 1", () => {
@@ -39,18 +40,29 @@ describe("cartReducer — AC2", () => {
 
 describe("computeCartTotalCents — AC2", () => {
   it("is zero for an empty cart", () => {
-    expect(computeCartTotalCents([])).toBe(0);
+    expect(computeCartTotalCents([], MENU)).toBe(0);
   });
 
   it("sums known items by price and quantity", () => {
     // tiramisu is 750 cents in the fixture menu.
-    const total = computeCartTotalCents([{ itemId: "tiramisu", quantity: 2 }]);
+    const total = computeCartTotalCents(
+      [{ itemId: "tiramisu", quantity: 2 }],
+      MENU,
+    );
     expect(total).toBe(1500);
   });
 
   it("treats an unknown itemId as zero rather than throwing", () => {
     const lines = [{ itemId: "does-not-exist", quantity: 1 }];
-    expect(() => computeCartTotalCents(lines)).not.toThrow();
-    expect(computeCartTotalCents(lines)).toBe(0);
+    expect(() => computeCartTotalCents(lines, MENU)).not.toThrow();
+    expect(computeCartTotalCents(lines, MENU)).toBe(0);
+  });
+
+  it("is zero for every item when categories is empty", () => {
+    const total = computeCartTotalCents(
+      [{ itemId: "tiramisu", quantity: 2 }],
+      [],
+    );
+    expect(total).toBe(0);
   });
 });

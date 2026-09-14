@@ -13,7 +13,18 @@
   box-shadow: 0 0 0 2px #222;
 }
 
-.card button {
+.detailsButton {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.addButton {
   padding: 0.4rem 0.9rem;
   border: 1px solid #222;
   border-radius: 6px;
@@ -23,7 +34,7 @@
   white-space: nowrap;
 }
 
-.card button:disabled {
+.addButton:disabled {
   background: #999;
   border-color: #999;
   cursor: not-allowed;

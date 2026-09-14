@@ -27,6 +27,8 @@ export type UiState = {
   selectedCategory: string | null;
   highlightedItemId: string | null;
   cartPanelOpen: boolean;
+  searchQuery: string;
+  detailItemId: string | null;
   commandLog: CommandLogEntry[];
 };
 
@@ -34,12 +36,16 @@ export type UiAction =
   | { type: "SELECT_CATEGORY"; categoryId: string | null }
   | { type: "HIGHLIGHT_ITEM"; itemId: string | null }
   | { type: "SET_CART_PANEL_OPEN"; open: boolean }
+  | { type: "SET_SEARCH_QUERY"; query: string }
+  | { type: "SHOW_ITEM_DETAIL"; itemId: string | null }
   | { type: "LOG_COMMAND"; entry: CommandLogEntry };
 
 export const initialUiState: UiState = {
   selectedCategory: null,
   highlightedItemId: null,
   cartPanelOpen: false,
+  searchQuery: "",
+  detailItemId: null,
   commandLog: [],
 };
 
@@ -51,6 +57,10 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
       return { ...state, highlightedItemId: action.itemId };
     case "SET_CART_PANEL_OPEN":
       return { ...state, cartPanelOpen: action.open };
+    case "SET_SEARCH_QUERY":
+      return { ...state, searchQuery: action.query };
+    case "SHOW_ITEM_DETAIL":
+      return { ...state, detailItemId: action.itemId };
     case "LOG_COMMAND":
       return {
         ...state,
@@ -66,6 +76,8 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
 
 type UiContextValue = UiState & {
   selectCategory: (categoryId: string | null) => void;
+  setSearchQuery: (query: string) => void;
+  showItemDetail: (itemId: string | null) => void;
   applyUiAction: (action: UiAction) => void;
   logCommand: (entry: CommandLogEntry) => void;
 };
@@ -80,6 +92,10 @@ export function UiProvider({ children }: { children: ReactNode }) {
       ...state,
       selectCategory: (categoryId: string | null) =>
         dispatch({ type: "SELECT_CATEGORY", categoryId }),
+      setSearchQuery: (query: string) =>
+        dispatch({ type: "SET_SEARCH_QUERY", query }),
+      showItemDetail: (itemId: string | null) =>
+        dispatch({ type: "SHOW_ITEM_DETAIL", itemId }),
       applyUiAction: (action: UiAction) => dispatch(action),
       logCommand: (entry: CommandLogEntry) =>
         dispatch({ type: "LOG_COMMAND", entry }),

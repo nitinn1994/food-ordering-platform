@@ -3,21 +3,31 @@
 import { useState, type FormEvent } from "react";
 import { simulateCommand } from "../../lib/commands/simulate";
 import { dispatchCommand } from "../../lib/commands/dispatch";
-import { useUi } from "../../lib/state/uiStore";
+import { useUi, type UiAction } from "../../lib/state/uiStore";
 import { ChatTranscript, type ChatMessage } from "./ChatTranscript";
 import styles from "./ChatInput.module.css";
 
-function describeOutcome(uiActionType: string | null): string {
-  switch (uiActionType) {
-    case "SELECT_CATEGORY":
-      return "Here's that category.";
-    case "HIGHLIGHT_ITEM":
-      return "Highlighting that item.";
-    case "SET_CART_PANEL_OPEN":
-      return "Opening your cart.";
-    default:
-      return "Sorry, I couldn't apply that command.";
+// Exhaustive over UiAction["type"] — adding a new command without a matching
+// entry here is now a compile error, not a silent wrong message. This bug
+// class already shipped twice (Phase 1's dead-state finding, and a second
+// instance caught during Phase 2.4) before this table existed.
+const OUTCOME_MESSAGES: Record<UiAction["type"], string> = {
+  SELECT_CATEGORY: "Here's that category.",
+  HIGHLIGHT_ITEM: "Highlighting that item.",
+  SET_CART_PANEL_OPEN: "Opening your cart.",
+  SHOW_ITEM_DETAIL: "Here are the details.",
+  SET_SEARCH_QUERY: "Here's what I found.",
+  // Never actually reaches here — dispatchCommand's uiAction comes from
+  // commandToUiAction, which never returns LOG_COMMAND (see dispatch.ts).
+  // Present only so this table stays exhaustive over the full UiAction union.
+  LOG_COMMAND: "Sorry, I couldn't apply that command.",
+};
+
+function describeOutcome(uiActionType: UiAction["type"] | null): string {
+  if (uiActionType === null) {
+    return "Sorry, I couldn't apply that command.";
   }
+  return OUTCOME_MESSAGES[uiActionType];
 }
 
 export function ChatInput() {

@@ -1,9 +1,11 @@
 # Food Ordering — Frontend MVP
 
-**Status:** Scope proposal from Phase 0. Not yet approved as a plan.
-**Last updated:** 2026-09-14
+**Status:** Sections 1–8 (the original MVP) are implemented — Phase 1, fully
+delivered. Section 9 (Phase 2 additions) is approved and in progress.
+**Last updated:** 2026-09-14 (sub-phase 2.1)
 **Related:** [`system-architecture.md`](../architecture/system-architecture.md) ·
-[`phase-0-discovery.md`](../architecture/phase-0-discovery.md)
+[`phase-0-discovery.md`](../architecture/phase-0-discovery.md) ·
+[`architecture-decisions.md`](../architecture/architecture-decisions.md)
 
 > This document derives the MVP scope from `CLAUDE.md`. `CLAUDE.md` remains the
 > specification of record; where the two disagree, `CLAUDE.md` wins and this
@@ -111,3 +113,32 @@ it lives the more code depends on the client knowing how to price things.
 3. **Does the development command log ship?** Useful in demos, and a plausible
    debugging surface later. If it ships, it needs a real home rather than being
    quietly promoted from a dev tool.
+
+## 9. Phase 2 additions
+
+Sections 1–8 above are the delivered Phase 1 MVP, left as written for the
+historical record. This section layers Phase 2's approved scope on top —
+see `docs/features/phase-2-menu-browsing/` for the full plan.
+
+**Added to in-scope:**
+
+- Search/filter within the existing menu (category + text query, AND
+  semantics).
+- An inline (non-modal) item detail panel, reachable by touch and by two new
+  UI commands: `ShowItemDetail`, `SearchMenu`.
+- Richer, **display-only** fixture fields (dietary tags, allergens, calories,
+  longer description) — not price-affecting, so the pricing violation in §7
+  does not grow.
+- Real loading and error states, via an async `getMenu()` seam that becomes
+  the single point `commerce-api` integration will later change.
+
+**Explicitly declined, not deferred:** restaurant discovery, or any
+`Restaurant` entity. See
+[ADR-0009](../architecture/architecture-decisions.md#adr-0009--single-restaurant-scope-no-restaurant-entity)
+— this was a live proposal for Phase 2 that was rejected because no approved
+document ever specified it, and because it would silently turn a
+single-restaurant ordering app into a marketplace.
+
+**Still out of scope**, unchanged from §4: modifiers/variants/combos (would
+compound the §7 pricing violation), routing/deep links, and everything on
+the backend/AI/voice/payments/infra list.

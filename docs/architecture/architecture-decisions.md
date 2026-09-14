@@ -26,6 +26,8 @@ made, and what they cost.
 | [0005](#adr-0005--refetch-after-mutation-for-frontend-freshness) | Refetch-after-mutation for frontend freshness | Proposed |
 | [0006](#adr-0006--jest-for-typescript-pytest-for-python) | Jest for TypeScript, pytest for Python | Proposed |
 | [0007](#adr-0007--defer-voice-entirely-rather-than-stub-a-provider) | Defer voice entirely rather than stub a provider | Proposed |
+| [0008](#adr-0008--vitest-for-typescript-testing-library--jsdom-for-components) | Vitest for TypeScript, Testing Library + jsdom for components | Accepted |
+| [0009](#adr-0009--single-restaurant-scope-no-restaurant-entity) | Single-restaurant scope — no `Restaurant` entity | Accepted |
 
 ---
 
@@ -189,7 +191,7 @@ Refetch after mutation. No polling, no push channel.
 
 ## ADR-0006 — Jest for TypeScript, pytest for Python
 
-**Status:** Proposed · **Date:** 2026-09-14
+**Status:** Superseded by [ADR-0008](#adr-0008--vitest-for-typescript-testing-library--jsdom-for-components) · **Date:** 2026-09-14
 
 ### Context
 
@@ -210,6 +212,14 @@ actually scaffolded.
 - Until a phase actually scaffolds an app, every test command in this
   repository is `NOT_CONFIGURED`. See
   [`getting-started.md`](../development/getting-started.md).
+
+### Superseded
+
+Phase 1 (`docs/features/phase-1-web-foundation/requirements.md`, Decision A)
+chose Vitest for `apps/web` at approval time, before this ADR was ever marked
+Accepted — it was implemented while still sitting at `Proposed`. This entry
+was left stale until sub-phase 2.1 corrected it. See ADR-0008 for the
+decision actually in force.
 
 ---
 
@@ -238,3 +248,86 @@ No voice surface in the MVP. Not a disabled button, not a stub interface.
 - Risk: voice added later may demand streaming responses, whereas the text
   path can get away with request/response. If that shapes the `ai-service`
   HTTP contract, better to know before that contract has many consumers.
+
+---
+
+## ADR-0008 — Vitest for TypeScript, Testing Library + jsdom for components
+
+**Status:** Accepted · **Date:** 2026-09-14 (sub-phase 2.1) · Supersedes [ADR-0006](#adr-0006--jest-for-typescript-pytest-for-python)
+
+### Context
+
+Phase 1 chose Vitest for pure-logic tests (`environment: "node"`) — no
+component was ever actually rendered, so nothing exposed whether the choice
+scaled to component testing. Phase 2 needed to test React components
+(loading/error/empty states, the detail panel) for the first time, which
+surfaced three gaps at once when sub-phase 2.1 first tried it:
+
+1. Vite's default esbuild JSX transform is classic (`React.createElement`),
+   which needs `React` in scope. Next.js's own SWC compiler doesn't have
+   this requirement, so it never surfaced until a test rendered JSX.
+2. `apps/web/src/lib/commands/dispatch.ts`'s AC8 test reads its own source
+   file via `import.meta.url` — under `jsdom`, that stops being a real
+   `file://` URL.
+3. Without Vitest's `test.globals: true` (deliberately not set, to keep
+   every test file's imports explicit), React Testing Library's automatic
+   `afterEach` cleanup never registers, so unmounted components accumulate
+   across tests in the same file.
+
+### Decision
+
+Vitest stays the one TypeScript test runner (formally accepted here, since
+ADR-0006 was implemented while still `Proposed`). Component tests use
+`@testing-library/react` + `@testing-library/user-event` +
+`@testing-library/jest-dom`, environment `jsdom` project-wide, with three
+concrete fixes:
+
+- `vitest.config.ts` sets `esbuild.jsx: "automatic"`.
+- `dispatch.test.ts` overrides to `// @vitest-environment node` for its one
+  filesystem-based test — it isn't a DOM test and doesn't need to become one.
+- `vitest.setup.ts` calls `cleanup()` in an explicit `afterEach`.
+
+pytest remains the choice for `apps/ai-service` (unaffected by any of this;
+it doesn't exist yet).
+
+### Consequences
+
+- Every future component test needs no per-file setup — the three fixes are
+  global. New pure-logic tests are unaffected; jsdom is a superset
+  environment for them.
+- A file needing the Node environment specifically must say so explicitly
+  (`dispatch.test.ts` is the first, precedent for the pattern).
+- `@vitejs/plugin-react` was deliberately **not** added — `esbuild.jsx` alone
+  was sufficient, and the plugin's fast-refresh/HMR features are irrelevant
+  to a test runner.
+
+---
+
+## ADR-0009 — Single-restaurant scope, no `Restaurant` entity
+
+**Status:** Accepted · **Date:** 2026-09-14 (sub-phase 2.1)
+
+### Context
+
+Phase 2 planning proposed "restaurant discovery" as potential scope. No
+approved document — not `CLAUDE.md`, not `food-ordering-frontend-mvp.md`,
+not `system-architecture.md` — contains the word "restaurant" anywhere
+(verified by grep before this ADR was written). Introducing a `Restaurant`
+entity would turn this from a single-restaurant ordering app into a
+marketplace, which cascades into questions no document has answered: can a
+cart span restaurants, does the menu API become restaurant-scoped, does
+`commerce-api`'s domain model need a restaurant boundary from day one.
+
+### Decision
+
+Phase 2 stays single-restaurant. This is a **rejection**, not a deferral —
+recorded so restaurant discovery isn't re-proposed later without a fresh
+decision that actually weighs the marketplace-shaped consequences above.
+
+### Consequences
+
+- Phase 2's menu, search, and detail work stay additive to the existing
+  single-restaurant fixture shape — no new entity, no new relationship.
+- If a marketplace product direction is chosen later, it is a genuinely new
+  architectural decision (server topology, cart-scoping semantics,
+  `commerce-api` domain model), not an extension of Phase 2's work.

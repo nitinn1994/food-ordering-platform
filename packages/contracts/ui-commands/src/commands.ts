@@ -20,10 +20,24 @@ export const openCartPanelSchema = z.object({
   open: z.boolean(),
 });
 
+export const showItemDetailSchema = z.object({
+  type: z.literal("ShowItemDetail"),
+  itemId: z.string().min(1),
+});
+
+// query may be empty — an empty SearchMenu clears the search, same as the
+// touch-driven "Clear search" affordance.
+export const searchMenuSchema = z.object({
+  type: z.literal("SearchMenu"),
+  query: z.string(),
+});
+
 export const uiCommandSchema = z.discriminatedUnion("type", [
   showMenuCategorySchema,
   highlightItemSchema,
   openCartPanelSchema,
+  showItemDetailSchema,
+  searchMenuSchema,
 ]);
 
 export type UiCommand = z.infer<typeof uiCommandSchema>;
@@ -33,4 +47,6 @@ export const UI_COMMAND_TYPES = [
   "ShowMenuCategory",
   "HighlightItem",
   "OpenCartPanel",
+  "ShowItemDetail",
+  "SearchMenu",
 ] as const satisfies readonly UiCommandType[];

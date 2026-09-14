@@ -11,6 +11,6 @@
   flex-wrap: wrap;
 }
 
-.layout > section {
+.column {
   flex: 1 1 480px;
 }

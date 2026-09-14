@@ -1,3 +1,8 @@
+// @vitest-environment node
+// This file does a plain filesystem read of its own source (AC8) — it has
+// no DOM dependency, and jsdom (the project default as of sub-phase 2.1)
+// does not provide a real file:// import.meta.url, which that check needs.
+
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -23,6 +28,27 @@ describe("dispatchCommand — AC3 (accepts a valid command)", () => {
     expect(commandToUiAction({ type: "OpenCartPanel", open: true })).toEqual({
       type: "SET_CART_PANEL_OPEN",
       open: true,
+    });
+  });
+
+  it("maps ShowItemDetail to a SHOW_ITEM_DETAIL ui action", () => {
+    const result = dispatchCommand({
+      type: "ShowItemDetail",
+      itemId: "tiramisu",
+    });
+    expect(result.entry.status).toBe("accepted");
+    expect(result.uiAction).toEqual({
+      type: "SHOW_ITEM_DETAIL",
+      itemId: "tiramisu",
+    });
+  });
+
+  it("maps SearchMenu to a SET_SEARCH_QUERY ui action", () => {
+    const result = dispatchCommand({ type: "SearchMenu", query: "pizza" });
+    expect(result.entry.status).toBe("accepted");
+    expect(result.uiAction).toEqual({
+      type: "SET_SEARCH_QUERY",
+      query: "pizza",
     });
   });
 });

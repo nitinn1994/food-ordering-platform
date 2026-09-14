@@ -14,6 +14,10 @@ export function commandToUiAction(command: UiCommand): UiAction {
       return { type: "HIGHLIGHT_ITEM", itemId: command.itemId };
     case "OpenCartPanel":
       return { type: "SET_CART_PANEL_OPEN", open: command.open };
+    case "ShowItemDetail":
+      return { type: "SHOW_ITEM_DETAIL", itemId: command.itemId };
+    case "SearchMenu":
+      return { type: "SET_SEARCH_QUERY", query: command.query };
   }
 }
 

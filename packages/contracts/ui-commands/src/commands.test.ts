@@ -21,12 +21,29 @@ describe("parseCommand — accepts valid commands (AC3)", () => {
     expect(result.accepted).toBe(true);
   });
 
+  it("accepts a valid ShowItemDetail", () => {
+    const result = parseCommand({ type: "ShowItemDetail", itemId: "tiramisu" });
+    expect(result.accepted).toBe(true);
+  });
+
+  it("accepts a valid SearchMenu, including an empty query", () => {
+    expect(parseCommand({ type: "SearchMenu", query: "pizza" }).accepted).toBe(
+      true,
+    );
+    // Empty clears the search — a deliberately valid case, not an edge case.
+    expect(parseCommand({ type: "SearchMenu", query: "" }).accepted).toBe(
+      true,
+    );
+  });
+
   it("covers every declared command type", () => {
     // Guards against UI_COMMAND_TYPES drifting from the schema union.
     expect(UI_COMMAND_TYPES).toEqual([
       "ShowMenuCategory",
       "HighlightItem",
       "OpenCartPanel",
+      "ShowItemDetail",
+      "SearchMenu",
     ]);
   });
 });
@@ -69,6 +86,21 @@ describe("parseCommand — rejects malformed payloads (AC5)", () => {
 
   it("rejects OpenCartPanel with a non-boolean open field", () => {
     const result = parseCommand({ type: "OpenCartPanel", open: "yes" });
+    expect(result.accepted).toBe(false);
+  });
+
+  it("rejects ShowItemDetail with a missing itemId", () => {
+    const result = parseCommand({ type: "ShowItemDetail" });
+    expect(result.accepted).toBe(false);
+  });
+
+  it("rejects ShowItemDetail with an empty itemId", () => {
+    const result = parseCommand({ type: "ShowItemDetail", itemId: "" });
+    expect(result.accepted).toBe(false);
+  });
+
+  it("rejects SearchMenu with a non-string query", () => {
+    const result = parseCommand({ type: "SearchMenu", query: 42 });
     expect(result.accepted).toBe(false);
   });
 

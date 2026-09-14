@@ -21,6 +21,19 @@ export function simulateCommand(utterance: string): unknown {
     return { type: "ShowMenuCategory" }; // missing categoryId
   }
 
+  if (text.startsWith("search for ")) {
+    return { type: "SearchMenu", query: text.slice("search for ".length) };
+  }
+  if (text.startsWith("find ")) {
+    return { type: "SearchMenu", query: text.slice("find ".length) };
+  }
+
+  // Checked before the "tiramisu" HighlightItem trigger below, so "tiramisu
+  // details" resolves to the detail panel rather than just a highlight.
+  if (text.includes("detail")) {
+    return { type: "ShowItemDetail", itemId: "tiramisu" };
+  }
+
   if (text.includes("dessert")) {
     return { type: "ShowMenuCategory", categoryId: "desserts" };
   }

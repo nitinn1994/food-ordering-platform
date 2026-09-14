@@ -7,17 +7,20 @@ import {
   useReducer,
   type ReactNode,
 } from "react";
-import { findMenuItem } from "../fixtures/menu";
+import type { MenuCategory, MenuItem } from "../fixtures/menu";
+import { findMenuItemIn } from "../menu/menuSource";
 import { sumCents } from "../money";
 
 // TEMPORARY — client-side cart state. Replaced by commerce-api cart
 // ownership. See docs/product/food-ordering-frontend-mvp.md §7, item 2.
 //
-// computeCartTotalCents prices the cart from fixture data. This is the one
-// place the MVP knowingly violates the authority model
-// (docs/architecture/system-architecture.md §5) because there is no backend
-// yet — see docs/product/food-ordering-frontend-mvp.md §7, item 3. It must
-// not survive past this phase without a comment like this one.
+// computeCartTotalCents prices the cart from already-resolved menu data
+// (passed in by whoever mounts CartProvider — see page.tsx), never from the
+// fixture directly (AC6). This is still the one place the MVP knowingly
+// violates the authority model (docs/architecture/system-architecture.md
+// §5) because there is no backend yet — see
+// docs/product/food-ordering-frontend-mvp.md §7, item 3. It must not
+// survive past this phase without a comment like this one.
 
 export type CartLine = {
   itemId: string;
@@ -62,9 +65,12 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
   }
 }
 
-export function computeCartTotalCents(lines: readonly CartLine[]): number {
+export function computeCartTotalCents(
+  lines: readonly CartLine[],
+  categories: readonly MenuCategory[],
+): number {
   const lineCents = lines.map((line) => {
-    const item = findMenuItem(line.itemId);
+    const item = findMenuItemIn(categories, line.itemId);
     return item ? item.priceCents * line.quantity : 0;
   });
   return sumCents(lineCents);
@@ -75,21 +81,29 @@ type CartContextValue = {
   totalCents: number;
   addItem: (itemId: string) => void;
   removeItem: (itemId: string) => void;
+  findItem: (itemId: string) => MenuItem | undefined;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
 
-export function CartProvider({ children }: { children: ReactNode }) {
+export function CartProvider({
+  children,
+  categories,
+}: {
+  children: ReactNode;
+  categories: readonly MenuCategory[];
+}) {
   const [state, dispatch] = useReducer(cartReducer, initialCartState);
 
   const value = useMemo<CartContextValue>(
     () => ({
       lines: state.lines,
-      totalCents: computeCartTotalCents(state.lines),
+      totalCents: computeCartTotalCents(state.lines, categories),
       addItem: (itemId: string) => dispatch({ type: "ADD_ITEM", itemId }),
       removeItem: (itemId: string) => dispatch({ type: "REMOVE_ITEM", itemId }),
+      findItem: (itemId: string) => findMenuItemIn(categories, itemId),
     }),
-    [state],
+    [state, categories],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

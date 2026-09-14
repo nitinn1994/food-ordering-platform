@@ -1,8 +1,10 @@
 # Getting Started
 
-**Last updated:** 2026-09-14
+**Last updated:** 2026-09-14 (sub-phase 2.4)
 **Status:** `apps/web` and `packages/contracts/ui-commands` are scaffolded and
-working (Phase 1). `apps/ai-service` and `apps/commerce-api` do not exist yet.
+working — Phase 1 (frontend foundation) and Phase 2 (menu browsing: search,
+item detail, loading/error states) are both complete. `apps/ai-service` and
+`apps/commerce-api` do not exist yet.
 
 ---
 
@@ -42,14 +44,14 @@ Verified working with:
 ## Commands
 
 Run from the repository root unless noted. All verified passing as of
-2026-09-14 (sub-phase 1.4).
+2026-09-14 (sub-phase 2.4).
 
 | Task | Command | Status |
 | ---- | ------- | ------ |
 | Install | `pnpm install` | Verified |
 | Type check (all packages) | `pnpm turbo run typecheck` | Verified |
 | Lint (all packages) | `pnpm turbo run lint` | Verified |
-| Test (all packages) | `pnpm turbo run test` | Verified — 30 tests (11 contracts + 19 web) |
+| Test (all packages) | `pnpm turbo run test` | Verified — 69 tests (16 contracts + 53 web) |
 | Build (all packages) | `pnpm turbo run build` | Verified |
 | Run `apps/web` in development | `pnpm --filter web dev` | Verified — serves on http://localhost:3000 |
 
@@ -75,21 +77,27 @@ plugin) per `docs/features/phase-1-web-foundation/plan.md`.
 
 ```text
 apps/
-  web/            Next.js frontend — scaffolded, working (Phase 1)
-    src/app/                page shell (layout, page, globals.css)
-    src/components/menu/    CategoryFilter, MenuItemCard, MenuList
-    src/components/cart/    CartPanel, CartLine, CartTotal
-    src/components/chat/    ChatInput, ChatTranscript
-    src/components/dev/     CommandLogPanel (development-only)
-    src/lib/commands/       simulate.ts (temporary), dispatch.ts
-    src/lib/state/          uiStore.tsx (durable), cartStore.tsx (temporary)
-    src/lib/fixtures/       menu.ts (temporary)
-    src/lib/money.ts        integer-cents formatting
+  web/            Next.js frontend — scaffolded, working (Phase 1 + Phase 2)
+    src/app/                 page.tsx (async Server Component), loading.tsx,
+                              error.tsx, globals.css
+    src/components/menu/     CategoryFilter, MenuSearch, MenuList,
+                              MenuItemCard, ItemDetailPanel
+    src/components/cart/     CartPanel, CartLine, CartTotal
+    src/components/chat/     ChatInput, ChatTranscript
+    src/components/dev/      CommandLogPanel (development-only)
+    src/lib/commands/        simulate.ts (temporary), dispatch.ts
+    src/lib/state/           uiStore.tsx (durable), cartStore.tsx (temporary)
+    src/lib/menu/            menuSource.ts (the one fixture-import point),
+                              filter.ts (category + query, AND semantics)
+    src/lib/fixtures/        menu.ts (temporary)
+    src/lib/money.ts         integer-cents formatting
   ai-service/     Python service — not yet scaffolded
   commerce-api/   NestJS service — not yet scaffolded
 packages/
   contracts/
     ui-commands/    scaffolded, working — what the screen should do (ai-service → web)
+                     5 commands: ShowMenuCategory, HighlightItem, OpenCartPanel,
+                     ShowItemDetail, SearchMenu
     agent-intents/  empty — what should happen to commerce (ai-service → commerce-api)
     api-contracts/  empty — request/response shapes (commerce-api → everyone)
 infrastructure/
@@ -97,6 +105,7 @@ infrastructure/
 docs/
   architecture/  product/  api/  decisions/  development/
   features/phase-1-web-foundation/    requirements.md, plan.md, test-plan.md
+  features/phase-2-menu-browsing/     requirements.md, plan.md, test-plan.md
 .claude/          ForgeFlow — rules, commands, agents, skills, workflows
 ```
 
@@ -126,8 +135,10 @@ replaces them — see
 
 ## Next step
 
-Phase 1 (sub-phases 1.1–1.4) is implemented: workspace foundation, the
-`ui-commands` contracts package, the menu/cart UI, and the validated command
+Phase 1 (sub-phases 1.1–1.4) and Phase 2 (sub-phases 2.1–2.4) are both
+implemented: workspace foundation, the `ui-commands` contracts package
+(5 commands), the menu/cart UI with search and item detail, real
+loading/error states via an async `getMenu()` seam, and the validated command
 pipeline with its adversarial rejection path. `apps/commerce-api` and
 `apps/ai-service` are the next major phases and have not been planned yet.
 

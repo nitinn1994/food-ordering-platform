@@ -8,7 +8,7 @@ import styles from "./MenuItemCard.module.css";
 
 export function MenuItemCard({ item }: { item: MenuItem }) {
   const { addItem } = useCart();
-  const { highlightedItemId } = useUi();
+  const { highlightedItemId, showItemDetail } = useUi();
   const isHighlighted = item.id === highlightedItemId;
 
   return (
@@ -17,13 +17,19 @@ export function MenuItemCard({ item }: { item: MenuItem }) {
         isHighlighted ? `${styles.card} ${styles.highlighted}` : styles.card
       }
     >
-      <div>
+      <button
+        type="button"
+        className={styles.detailsButton}
+        onClick={() => showItemDetail(item.id)}
+        aria-label={`View details for ${item.name}`}
+      >
         <h3>{item.name}</h3>
         <p>{item.description}</p>
         <p>{formatCents(item.priceCents)}</p>
-      </div>
+      </button>
       <button
         type="button"
+        className={styles.addButton}
         onClick={() => addItem(item.id)}
         disabled={!item.available}
       >

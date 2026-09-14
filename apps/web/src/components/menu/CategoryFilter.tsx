@@ -1,14 +1,18 @@
 "use client";
 
-import { MENU } from "../../lib/fixtures/menu";
+import type { MenuCategory } from "../../lib/fixtures/menu";
 import { useUi } from "../../lib/state/uiStore";
 import styles from "./CategoryFilter.module.css";
 
-export function CategoryFilter() {
+export function CategoryFilter({
+  categories,
+}: {
+  categories: readonly MenuCategory[];
+}) {
   const { selectedCategory, selectCategory } = useUi();
 
   return (
-    <div className={styles.filter} role="tablist" aria-label="Menu categories">
+    <div className={styles.filter} role="group" aria-label="Menu categories">
       <button
         type="button"
         className={selectedCategory === null ? styles.active : undefined}
@@ -17,7 +21,7 @@ export function CategoryFilter() {
       >
         All
       </button>
-      {MENU.map((category) => (
+      {categories.map((category) => (
         <button
           key={category.id}
           type="button"
