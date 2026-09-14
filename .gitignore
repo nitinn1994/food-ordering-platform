@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Turborepo
+.turbo/
+
+# Python (apps/ai-service, later phases)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Test and coverage
+coverage/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor and OS
+.DS_Store
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json

@@ -1,0 +1,15 @@
+.line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.line button {
+  border: none;
+  background: none;
+  color: #a00;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+}

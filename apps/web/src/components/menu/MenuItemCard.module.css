@@ -1,0 +1,30 @@
+.card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+}
+
+.highlighted {
+  border-color: #222;
+  box-shadow: 0 0 0 2px #222;
+}
+
+.card button {
+  padding: 0.4rem 0.9rem;
+  border: 1px solid #222;
+  border-radius: 6px;
+  background: #222;
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.card button:disabled {
+  background: #999;
+  border-color: #999;
+  cursor: not-allowed;
+}
