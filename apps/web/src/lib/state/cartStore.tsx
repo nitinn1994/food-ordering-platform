@@ -7,20 +7,17 @@ import {
   useReducer,
   type ReactNode,
 } from "react";
-import type { MenuCategory, MenuItem } from "../fixtures/menu";
-import { findMenuItemIn } from "../menu/menuSource";
-import { sumCents } from "../money";
+import { MAX_LINE_QUANTITY, cartItemCount } from "../cart/pricing";
 
 // TEMPORARY — client-side cart state. Replaced by commerce-api cart
 // ownership. See docs/product/food-ordering-frontend-mvp.md §7, item 2.
 //
-// computeCartTotalCents prices the cart from already-resolved menu data
-// (passed in by whoever mounts CartProvider — see page.tsx), never from the
-// fixture directly (AC6). This is still the one place the MVP knowingly
-// violates the authority model (docs/architecture/system-architecture.md
-// §5) because there is no backend yet — see
-// docs/product/food-ordering-frontend-mvp.md §7, item 3. It must not
-// survive past this phase without a comment like this one.
+// Holds only cart lines and their mutations — no pricing and no menu
+// dependency, so this provider can live above routing (see app/layout.tsx)
+// without coupling cart state to how menu data is fetched. Pricing is
+// derived from (lines, categories) by pure functions in lib/cart/pricing.ts,
+// which is where the temporary client-side pricing violation
+// (docs/product/food-ordering-frontend-mvp.md §7, item 3) now lives.
 
 export type CartLine = {
   itemId: string;
@@ -33,7 +30,8 @@ export type CartState = {
 
 export type CartAction =
   | { type: "ADD_ITEM"; itemId: string }
-  | { type: "REMOVE_ITEM"; itemId: string };
+  | { type: "REMOVE_ITEM"; itemId: string }
+  | { type: "DECREMENT_ITEM"; itemId: string };
 
 export const initialCartState: CartState = { lines: [] };
 
@@ -44,6 +42,9 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
         (line) => line.itemId === action.itemId,
       );
       if (existing) {
+        if (existing.quantity >= MAX_LINE_QUANTITY) {
+          return state;
+        }
         return {
           lines: state.lines.map((line) =>
             line.itemId === action.itemId
@@ -56,6 +57,16 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
         lines: [...state.lines, { itemId: action.itemId, quantity: 1 }],
       };
     }
+    case "DECREMENT_ITEM":
+      // Never reaches 0 — removal is Remove's job, not a decrement side
+      // effect (docs/features/phase-3-frontend-cart-simulation/plan.md, Q5).
+      return {
+        lines: state.lines.map((line) =>
+          line.itemId === action.itemId && line.quantity > 1
+            ? { ...line, quantity: line.quantity - 1 }
+            : line,
+        ),
+      };
     case "REMOVE_ITEM":
       return {
         lines: state.lines.filter((line) => line.itemId !== action.itemId),
@@ -65,45 +76,30 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
   }
 }
 
-export function computeCartTotalCents(
-  lines: readonly CartLine[],
-  categories: readonly MenuCategory[],
-): number {
-  const lineCents = lines.map((line) => {
-    const item = findMenuItemIn(categories, line.itemId);
-    return item ? item.priceCents * line.quantity : 0;
-  });
-  return sumCents(lineCents);
-}
-
 type CartContextValue = {
   lines: CartLine[];
-  totalCents: number;
+  itemCount: number;
   addItem: (itemId: string) => void;
+  decrementItem: (itemId: string) => void;
   removeItem: (itemId: string) => void;
-  findItem: (itemId: string) => MenuItem | undefined;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
 
-export function CartProvider({
-  children,
-  categories,
-}: {
-  children: ReactNode;
-  categories: readonly MenuCategory[];
-}) {
+export function CartProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, initialCartState);
 
   const value = useMemo<CartContextValue>(
     () => ({
       lines: state.lines,
-      totalCents: computeCartTotalCents(state.lines, categories),
+      itemCount: cartItemCount(state.lines),
       addItem: (itemId: string) => dispatch({ type: "ADD_ITEM", itemId }),
-      removeItem: (itemId: string) => dispatch({ type: "REMOVE_ITEM", itemId }),
-      findItem: (itemId: string) => findMenuItemIn(categories, itemId),
+      decrementItem: (itemId: string) =>
+        dispatch({ type: "DECREMENT_ITEM", itemId }),
+      removeItem: (itemId: string) =>
+        dispatch({ type: "REMOVE_ITEM", itemId }),
     }),
-    [state, categories],
+    [state],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

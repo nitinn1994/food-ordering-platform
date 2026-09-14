@@ -15,7 +15,7 @@ import { MENU, type MenuCategory } from "../../lib/fixtures/menu";
 function renderWithProviders(categories: readonly MenuCategory[]) {
   return render(
     <UiProvider>
-      <CartProvider categories={categories}>
+      <CartProvider>
         <MenuList categories={categories} />
       </CartProvider>
     </UiProvider>,
@@ -34,7 +34,7 @@ describe("MenuList — AC11 (real card wiring, not just ItemDetailPanel in isola
   it("opens the detail panel when a real rendered card is clicked", async () => {
     render(
       <UiProvider>
-        <CartProvider categories={MENU}>
+        <CartProvider>
           <MenuList categories={MENU} />
           <ItemDetailPanel categories={MENU} />
         </CartProvider>
@@ -72,7 +72,7 @@ describe("MenuList — AC10 (no-results, distinct from empty-category)", () => {
   it('shows "no items match" for a search with no results, distinct from the empty-category message', async () => {
     render(
       <UiProvider>
-        <CartProvider categories={MENU}>
+        <CartProvider>
           <MenuSearch />
           <MenuList categories={MENU} />
         </CartProvider>

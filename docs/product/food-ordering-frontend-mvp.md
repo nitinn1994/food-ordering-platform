@@ -1,8 +1,9 @@
 # Food Ordering — Frontend MVP
 
 **Status:** Sections 1–8 (the original MVP) are implemented — Phase 1, fully
-delivered. Section 9 (Phase 2 additions) is approved and in progress.
-**Last updated:** 2026-09-14 (sub-phase 2.1)
+delivered. Section 9 (Phase 2 additions) is implemented. Section 10 (Phase 3
+additions) is implemented.
+**Last updated:** 2026-09-14 (Phase 3, sub-phase 3.5)
 **Related:** [`system-architecture.md`](../architecture/system-architecture.md) ·
 [`phase-0-discovery.md`](../architecture/phase-0-discovery.md) ·
 [`architecture-decisions.md`](../architecture/architecture-decisions.md)
@@ -142,3 +143,57 @@ single-restaurant ordering app into a marketplace.
 **Still out of scope**, unchanged from §4: modifiers/variants/combos (would
 compound the §7 pricing violation), routing/deep links, and everything on
 the backend/AI/voice/payments/infra list.
+
+## 10. Phase 3 additions
+
+Sections 1–9 above are the delivered Phase 1 + Phase 2 MVP. This section
+layers Phase 3's scope on top — see
+`docs/features/phase-3-frontend-cart-simulation/` for the full plan.
+
+**Added to in-scope:**
+
+- Full frontend-only cart CRUD: increase quantity (in-cart "+", same path as
+  adding from the menu), decrease quantity (in-cart "−", floors at 1 —
+  Remove is the only path to deleting a line), and a quantity cap (99 per
+  line) as frontend validation.
+- Per-line and cart subtotals, and a cart item count (sum of quantities,
+  shown in site navigation and in a compact menu-page summary).
+- A real `/cart` route, reachable via site navigation from the menu page and
+  back. See
+  [ADR-0010](../architecture/architecture-decisions.md#adr-0010--a-real-cart-route-with-providers-hoisted-to-the-root-layout)
+  for why this narrows, rather than reverses, §9's "no routing" boundary.
+- Cart state now survives navigating between `/` and `/cart` — `UiProvider`
+  and `CartProvider` moved from `page.tsx` to the root layout as part of the
+  same change.
+- A polite (`aria-live="polite"`) live-region announcement on cart changes,
+  and a brief visual highlight on a changed line in place of any fabricated
+  loading state — cart mutations are synchronous local state with no real
+  latency to represent.
+- Empty-cart states (menu summary and `/cart`), accessible quantity controls
+  (named per item, correct `disabled` semantics, ≥44px tap targets), and a
+  responsive stack below ~480px.
+
+**Explicitly still temporary, unchanged from §7:** items 2 and 3 (client-side
+cart state and its pricing) are more complete after Phase 3, not less
+temporary — they still exist only because `commerce-api` does not yet.
+`cartStore.tsx` holds only lines and mutations; all pricing math lives in the
+new `lib/cart/pricing.ts`, a small, deletable, pure module, specifically so
+replacing it with `commerce-api` responses later is a contained change.
+
+**Still out of scope**, unchanged from §4/§9 except where narrowed above:
+modifiers/variants/combos, deep-linkable **item** URLs (the item-detail
+panel is still inline), tax/fees/tips/discounts/any total beyond a subtotal,
+cart persistence across a page reload, "clear cart", checkout of any shape,
+and everything on the backend/AI/voice/payments/infra list.
+
+**Known gap, recorded rather than hidden:** the interactive manual
+verification this kind of UI change would normally get (clicking through
+the cart, confirming live-region announcements, checking behavior at
+375/768/1280px, and directly observing cross-route persistence) could not
+be performed — the Chrome browser automation tool was unavailable for the
+entirety of Phase 3's implementation. What stands in its place: 98 automated
+tests (Vitest + React Testing Library, which does exercise clicks and state
+transitions within a render tree) and static server-rendered HTML checks via
+`curl`. This is not equivalent to driving a real browser, and should be
+treated as the first thing to verify before this phase is considered fully
+proven.

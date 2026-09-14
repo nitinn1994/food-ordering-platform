@@ -28,6 +28,7 @@ made, and what they cost.
 | [0007](#adr-0007--defer-voice-entirely-rather-than-stub-a-provider) | Defer voice entirely rather than stub a provider | Proposed |
 | [0008](#adr-0008--vitest-for-typescript-testing-library--jsdom-for-components) | Vitest for TypeScript, Testing Library + jsdom for components | Accepted |
 | [0009](#adr-0009--single-restaurant-scope-no-restaurant-entity) | Single-restaurant scope — no `Restaurant` entity | Accepted |
+| [0010](#adr-0010--a-real-cart-route-with-providers-hoisted-to-the-root-layout) | A real `/cart` route, with providers hoisted to the root layout | Accepted |
 
 ---
 
@@ -331,3 +332,62 @@ decision that actually weighs the marketplace-shaped consequences above.
 - If a marketplace product direction is chosen later, it is a genuinely new
   architectural decision (server topology, cart-scoping semantics,
   `commerce-api` domain model), not an extension of Phase 2's work.
+
+---
+
+## ADR-0010 — A real `/cart` route, with providers hoisted to the root layout
+
+**Status:** Accepted · **Date:** 2026-09-14 (Phase 3) · Reverses part of the
+routing exclusion recorded in `food-ordering-frontend-mvp.md` §4/§9
+
+### Context
+
+`food-ordering-frontend-mvp.md` §4 and §9 listed "routing / deep-linkable item
+URLs" as out of scope, in the context of the item-detail panel (Phase 2 chose
+an inline panel specifically to avoid needing routing at all). Phase 3 needed
+"navigate between menu and cart" and "preserve cart state during normal
+frontend navigation" (per the approved
+`docs/features/phase-3-frontend-cart-simulation/plan.md`). A client-side view
+toggle inside `uiStore` would satisfy the words without proving anything: if
+cart state already lives in a context that never unmounts, nothing is at risk
+of being lost, so persistence across navigation is untested by construction.
+
+Proving persistence for real requires an actual route change, which in turn
+requires deciding where `UiProvider`/`CartProvider` live: Phase 1 and 2 both
+mounted them inside `app/page.tsx`, which unmounts on every route change.
+
+### Decision
+
+Add a real `/cart` route (`app/cart/page.tsx`, `app/cart/loading.tsx`).
+`UiProvider` and `CartProvider` move from `app/page.tsx` to `app/layout.tsx`,
+so they persist across navigation between `/` and `/cart`. `CartProvider` is
+decoupled from menu data as part of the same change — it now holds only cart
+lines and their mutations (`addItem`, `decrementItem`, `removeItem`,
+`itemCount`); pricing is computed by pure functions in
+`apps/web/src/lib/cart/pricing.ts` that take `(lines, categories)` explicitly,
+the same props-based pattern Phase 2 already used for menu data (AC6).
+
+This narrows, rather than reverses, the §4/§9 exclusion: deep-linkable
+**item** URLs are still out of scope, and the item-detail panel is still
+inline. Only cart navigation gained a route.
+
+### Consequences
+
+- Cart state surviving navigation is now a structural property (the
+  providers are above the router boundary), not an assumption — though the
+  live cross-route check itself was verified only by static SSR inspection
+  in this phase; the Chrome browser automation tool was unavailable
+  throughout Phase 3's implementation, so the interactive click-through
+  check is still outstanding.
+- `CartProvider` no longer needs a `categories` prop, which removes a
+  dependency from cart *state* on menu *data* — a cleaner shape independent
+  of this decision's routing motivation.
+- The root `app/error.tsx` is relied on to cover the nested `/cart` segment
+  without its own error boundary, per documented Next.js App Router
+  behavior. This has not been confirmed with a live forced-rejection test
+  (same tooling gap as above); if it turns out not to hold, `app/cart/error.tsx`
+  is a small, isolated addition.
+- Any future route (e.g. a real order-confirmation page) now has a
+  precedent to follow rather than a fresh decision to make.
+
+---

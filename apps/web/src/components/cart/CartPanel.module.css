@@ -9,11 +9,3 @@
   border-color: #222;
   box-shadow: 0 0 0 2px #222;
 }
-
-.lines {
-  list-style: none;
-  margin: 0 0 1rem;
-  padding: 0;
-  display: grid;
-  gap: 0.5rem;
-}

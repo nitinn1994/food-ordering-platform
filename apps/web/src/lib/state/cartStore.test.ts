@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { cartReducer, computeCartTotalCents, initialCartState } from "./cartStore";
-import { MENU } from "../fixtures/menu";
+import { cartReducer, initialCartState, type CartState } from "./cartStore";
+import { MAX_LINE_QUANTITY } from "../cart/pricing";
 
 describe("cartReducer — AC2", () => {
   it("adds a new item with quantity 1", () => {
@@ -36,33 +36,52 @@ describe("cartReducer — AC2", () => {
     });
     expect(state).toEqual(initialCartState);
   });
-});
 
-describe("computeCartTotalCents — AC2", () => {
-  it("is zero for an empty cart", () => {
-    expect(computeCartTotalCents([], MENU)).toBe(0);
-  });
-
-  it("sums known items by price and quantity", () => {
-    // tiramisu is 750 cents in the fixture menu.
-    const total = computeCartTotalCents(
-      [{ itemId: "tiramisu", quantity: 2 }],
-      MENU,
-    );
-    expect(total).toBe(1500);
-  });
-
-  it("treats an unknown itemId as zero rather than throwing", () => {
-    const lines = [{ itemId: "does-not-exist", quantity: 1 }];
-    expect(() => computeCartTotalCents(lines, MENU)).not.toThrow();
-    expect(computeCartTotalCents(lines, MENU)).toBe(0);
-  });
-
-  it("is zero for every item when categories is empty", () => {
-    const total = computeCartTotalCents(
-      [{ itemId: "tiramisu", quantity: 2 }],
-      [],
-    );
-    expect(total).toBe(0);
+  it("is a no-op once a line has reached the quantity cap", () => {
+    const atCap: CartState = {
+      lines: [{ itemId: "tiramisu", quantity: MAX_LINE_QUANTITY }],
+    };
+    const state = cartReducer(atCap, { type: "ADD_ITEM", itemId: "tiramisu" });
+    expect(state.lines).toEqual([
+      { itemId: "tiramisu", quantity: MAX_LINE_QUANTITY },
+    ]);
   });
 });
+
+describe("cartReducer — DECREMENT_ITEM", () => {
+  it("decreases quantity by exactly 1", () => {
+    const twoInCart: CartState = {
+      lines: [{ itemId: "tiramisu", quantity: 2 }],
+    };
+    const state = cartReducer(twoInCart, {
+      type: "DECREMENT_ITEM",
+      itemId: "tiramisu",
+    });
+    expect(state.lines).toEqual([{ itemId: "tiramisu", quantity: 1 }]);
+  });
+
+  it("never decreases a line below quantity 1", () => {
+    const oneInCart: CartState = {
+      lines: [{ itemId: "tiramisu", quantity: 1 }],
+    };
+    const state = cartReducer(oneInCart, {
+      type: "DECREMENT_ITEM",
+      itemId: "tiramisu",
+    });
+    expect(state.lines).toEqual([{ itemId: "tiramisu", quantity: 1 }]);
+  });
+
+  it("is a no-op for an item that is not in the cart", () => {
+    const state = cartReducer(initialCartState, {
+      type: "DECREMENT_ITEM",
+      itemId: "tiramisu",
+    });
+    expect(state.lines).toEqual([]);
+  });
+});
+
+// Total-pricing coverage (empty cart, known items, unknown itemId, empty
+// categories) now lives in ../cart/pricing.test.ts against
+// cartSubtotalCents, which replaces the cart-store-local
+// computeCartTotalCents now that CartProvider no longer takes a categories
+// prop — see docs/features/phase-3-frontend-cart-simulation/plan.md.
