@@ -1,0 +1,38 @@
+.confirmation {
+  display: grid;
+  gap: 1.5rem;
+  max-width: 32rem;
+}
+
+/* Focused programmatically on mount (tabIndex={-1}), not part of the tab
+   order — an explicit outline confirms the focus move without offering a
+   pointless tab stop. */
+.introHeading {
+  margin: 0;
+  outline-offset: 2px;
+}
+
+.orderId {
+  font-size: 1.125rem;
+}
+
+.detailsList {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.75rem;
+  margin: 0;
+}
+
+.detailsList dt {
+  font-weight: 600;
+}
+
+.detailsList dd {
+  margin: 0;
+}
+
+.simulationNotice {
+  padding: 1rem;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+}

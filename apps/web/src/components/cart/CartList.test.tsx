@@ -45,6 +45,18 @@ describe("CartList — empty state", () => {
     ).not.toBeInTheDocument();
     expect(screen.queryByText(/^Total:/)).not.toBeInTheDocument();
   });
+
+  it("does not show a link to checkout when empty (AC2)", () => {
+    render(
+      <CartProvider>
+        <CartList categories={MENU} />
+      </CartProvider>,
+    );
+
+    expect(
+      screen.queryByRole("link", { name: /proceed to checkout/i }),
+    ).not.toBeInTheDocument();
+  });
 });
 
 describe("CartList — with items", () => {
@@ -69,5 +81,21 @@ describe("CartList — with items", () => {
     ).toBeInTheDocument();
     // tiramisu (750) + garlic-bread (595) = 1345 cents = $13.45.
     expect(screen.getByText("Total: $13.45")).toBeInTheDocument();
+  });
+
+  it("shows a link to checkout once the cart has a line (AC2)", async () => {
+    const user = userEvent.setup();
+    render(
+      <CartProvider>
+        <AddButtons />
+        <CartList categories={MENU} />
+      </CartProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "add tiramisu" }));
+
+    expect(
+      screen.getByRole("link", { name: /proceed to checkout/i }),
+    ).toHaveAttribute("href", "/checkout");
   });
 });

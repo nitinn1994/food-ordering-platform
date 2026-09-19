@@ -1,11 +1,13 @@
 # Getting Started
 
-**Last updated:** 2026-09-14 (Phase 3, sub-phase 3.5)
+**Last updated:** 2026-09-19 (Phase 4, sub-phase 4.5)
 **Status:** `apps/web` and `packages/contracts/ui-commands` are scaffolded and
 working — Phase 1 (frontend foundation), Phase 2 (menu browsing: search, item
-detail, loading/error states), and Phase 3 (frontend cart simulation: full
-cart CRUD, a `/cart` route, cross-route persistence) are all complete.
-`apps/ai-service` and `apps/commerce-api` do not exist yet.
+detail, loading/error states), Phase 3 (frontend cart simulation: full cart
+CRUD, a `/cart` route, cross-route persistence), and Phase 4 (frontend
+checkout simulation: a `/checkout` route, customer-details form, review, and
+a simulated order confirmation) are all complete. `apps/ai-service` and
+`apps/commerce-api` do not exist yet.
 
 ---
 
@@ -45,25 +47,28 @@ Verified working with:
 ## Commands
 
 Run from the repository root unless noted. All verified passing as of
-2026-09-14 (Phase 3, sub-phase 3.5).
+2026-09-19 (Phase 4, sub-phase 4.5).
 
 | Task | Command | Status |
 | ---- | ------- | ------ |
 | Install | `pnpm install` | Verified |
 | Type check (all packages) | `pnpm turbo run typecheck` | Verified |
 | Lint (all packages) | `pnpm turbo run lint` | Verified |
-| Test (all packages) | `pnpm turbo run test` | Verified — 100 tests (16 contracts + 84 web) |
-| Build (all packages) | `pnpm turbo run build` | Verified — `/`, `/cart`, `/_not-found` all prerender |
-| Run `apps/web` in development | `pnpm --filter web dev` | Verified — serves on http://localhost:3000; `/cart` also live |
+| Test (all packages) | `pnpm turbo run test` | Verified — 190 tests (16 contracts + 174 web), up from 100 before Phase 4 |
+| Build (all packages) | `pnpm turbo run build` | Verified — `/`, `/cart`, `/checkout`, `/_not-found` all prerender |
+| Run `apps/web` in development | `pnpm --filter web dev` | Verified — serves on http://localhost:3000; `/cart` and `/checkout` also live |
 
-**Not verified this phase:** interactive browser checks (clicking cart
-controls, keyboard navigation, live-region announcements, resizing, and the
-actual click-through cross-route cart-persistence check) — the Chrome
-browser automation tool was unavailable throughout Phase 3's implementation.
-Everything above was confirmed by the automated suite (jsdom + React Testing
-Library, which does exercise clicks and state updates within a render tree)
-and by static server-rendered HTML inspection via `curl`, not by driving a
-real browser. This is recorded here, not glossed over, per
+**Not verified this phase:** interactive browser checks (clicking through
+the checkout flow, keyboard-only completion, live-region announcements with
+a real screen reader, resizing, and a live forced-rejection test of the
+`/checkout` error boundary) — the Chrome browser automation tool did not
+connect when checked explicitly at the start of sub-phase 4.2, and remained
+unavailable for the rest of Phase 4's implementation. This repeats the exact
+gap Phase 3 recorded for the same reason. Everything above was confirmed by
+the automated suite (jsdom + React Testing Library, which does exercise
+clicks, real DOM tab order, and focus assertions within a render tree) and
+by static server-rendered HTML inspection via `curl`, not by driving a real
+browser. This is recorded here, not glossed over, per
 `.claude/rules/validation.md`.
 
 `packages/contracts/ui-commands` has no `dev`/`start` command — it is a
@@ -88,24 +93,34 @@ plugin) per `docs/features/phase-1-web-foundation/plan.md`.
 
 ```text
 apps/
-  web/            Next.js frontend — scaffolded, working (Phase 1 + 2 + 3)
+  web/            Next.js frontend — scaffolded, working (Phase 1 + 2 + 3 + 4)
     src/app/                 layout.tsx (providers, SiteNav, CartAnnouncer),
                               page.tsx (menu, async Server Component),
                               loading.tsx, error.tsx, globals.css
     src/app/cart/             page.tsx (async Server Component), loading.tsx
+    src/app/checkout/         page.tsx (async Server Component), loading.tsx
     src/components/menu/     CategoryFilter, MenuSearch, MenuList,
                               MenuItemCard, ItemDetailPanel
     src/components/cart/     CartPanel (compact menu-page summary),
-                              CartList (full /cart view), CartLine,
-                              CartTotal, QuantityStepper, CartAnnouncer
+                              CartList (full /cart view, checkout entry
+                              link), CartLine, CartTotal, QuantityStepper,
+                              CartAnnouncer
+    src/components/checkout/ CheckoutFlow (step machine + guard),
+                              EmptyCheckoutNotice, CustomerDetailsForm,
+                              FormField, CheckoutReview, OrderSummary,
+                              OrderConfirmation, CheckoutAnnouncer
     src/components/nav/      SiteNav (Menu / Cart (n), aria-current)
     src/components/chat/     ChatInput, ChatTranscript
     src/components/dev/      CommandLogPanel (development-only)
     src/lib/commands/        simulate.ts (temporary), dispatch.ts
     src/lib/state/           uiStore.tsx (durable), cartStore.tsx (temporary
-                              — lines + mutations only, no pricing)
+                              — lines + mutations only, no pricing; gained
+                              CLEAR_CART in Phase 4 for a placed order)
     src/lib/cart/            pricing.ts (line/cart subtotals, item count,
                               quantity cap — pure functions)
+    src/lib/checkout/        types.ts, validation.ts, orderId.ts, order.ts
+                              (temporary — simulated order snapshot),
+                              checkoutReducer.ts (step machine)
     src/lib/menu/            menuSource.ts (the one fixture-import point),
                               filter.ts (category + query, AND semantics)
     src/lib/fixtures/        menu.ts (temporary)
@@ -116,7 +131,7 @@ packages/
   contracts/
     ui-commands/    scaffolded, working — what the screen should do (ai-service → web)
                      5 commands: ShowMenuCategory, HighlightItem, OpenCartPanel,
-                     ShowItemDetail, SearchMenu — unchanged by Phase 3
+                     ShowItemDetail, SearchMenu — unchanged since Phase 2
     agent-intents/  empty — what should happen to commerce (ai-service → commerce-api)
     api-contracts/  empty — request/response shapes (commerce-api → everyone)
 infrastructure/
@@ -126,6 +141,7 @@ docs/
   features/phase-1-web-foundation/         requirements.md, plan.md, test-plan.md
   features/phase-2-menu-browsing/          requirements.md, plan.md, test-plan.md
   features/phase-3-frontend-cart-simulation/  requirements.md, plan.md, test-plan.md
+  features/phase-4-frontend-checkout-simulation/  requirements.md, plan.md, test-plan.md
 .claude/          ForgeFlow — rules, commands, agents, skills, workflows
 ```
 
@@ -144,7 +160,7 @@ Read, in this order:
 
 ## Explicitly temporary code
 
-Three modules in `apps/web` are scaffolding, each header-commented with what
+Four modules in `apps/web` are scaffolding, each header-commented with what
 replaces them — see
 [`docs/product/food-ordering-frontend-mvp.md`](../product/food-ordering-frontend-mvp.md)
 §7:
@@ -152,16 +168,23 @@ replaces them — see
 - `src/lib/fixtures/menu.ts` — replaced by `commerce-api` menu reads.
 - `src/lib/state/cartStore.tsx` — replaced by `commerce-api` cart ownership.
 - `src/lib/commands/simulate.ts` — replaced by real `apps/ai-service` output.
+- `src/lib/checkout/order.ts` — replaced by `commerce-api` order creation,
+  identity, and persistence (Phase 4; see
+  [ADR-0011](../architecture/architecture-decisions.md#adr-0011--a-simulated-frontend-checkout-that-knowingly-violates-the-order-state-authority-model)).
 
 ## Next step
 
-Phase 1 (sub-phases 1.1–1.4), Phase 2 (sub-phases 2.1–2.4), and Phase 3
-(sub-phases 3.1–3.5) are all implemented: workspace foundation, the
-`ui-commands` contracts package (5 commands, unchanged since Phase 2), the
-menu UI with search and item detail, real loading/error states via an async
-`getMenu()` seam, a complete frontend-only cart (add/remove/increase/decrease,
-subtotals, item count, a `/cart` route with cross-route persistence), and the
-validated command pipeline with its adversarial rejection path.
+Phase 1 (sub-phases 1.1–1.4), Phase 2 (sub-phases 2.1–2.4), Phase 3
+(sub-phases 3.1–3.5), and Phase 4 (sub-phases 4.1–4.5) are all implemented:
+workspace foundation, the `ui-commands` contracts package (5 commands,
+unchanged since Phase 2), the menu UI with search and item detail, real
+loading/error states via an async `getMenu()` seam, a complete frontend-only
+cart (add/remove/increase/decrease, subtotals, item count, a `/cart` route
+with cross-route persistence), the validated command pipeline with its
+adversarial rejection path, and a frontend-only checkout simulation
+(`/checkout`: customer-details form, review, a simulated order confirmation,
+and clearing the cart on success) that knowingly and temporarily violates
+the order-state authority model — recorded in ADR-0011, not hidden.
 `apps/commerce-api` and `apps/ai-service` are the next major phases and have
 not been planned yet.
 

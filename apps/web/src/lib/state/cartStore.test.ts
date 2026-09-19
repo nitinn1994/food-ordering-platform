@@ -80,6 +80,24 @@ describe("cartReducer — DECREMENT_ITEM", () => {
   });
 });
 
+describe("cartReducer — CLEAR_CART", () => {
+  it("empties a cart with existing lines", () => {
+    const populated: CartState = {
+      lines: [
+        { itemId: "tiramisu", quantity: 2 },
+        { itemId: "gelato", quantity: 1 },
+      ],
+    };
+    const state = cartReducer(populated, { type: "CLEAR_CART" });
+    expect(state.lines).toEqual([]);
+  });
+
+  it("is a no-op on an already-empty cart", () => {
+    const state = cartReducer(initialCartState, { type: "CLEAR_CART" });
+    expect(state.lines).toEqual([]);
+  });
+});
+
 // Total-pricing coverage (empty cart, known items, unknown itemId, empty
 // categories) now lives in ../cart/pricing.test.ts against
 // cartSubtotalCents, which replaces the cart-store-local

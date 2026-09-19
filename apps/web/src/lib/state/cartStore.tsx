@@ -18,6 +18,11 @@ import { MAX_LINE_QUANTITY, cartItemCount } from "../cart/pricing";
 // derived from (lines, categories) by pure functions in lib/cart/pricing.ts,
 // which is where the temporary client-side pricing violation
 // (docs/product/food-ordering-frontend-mvp.md §7, item 3) now lives.
+//
+// CLEAR_CART exists for Phase 4's frontend checkout simulation, which
+// empties the cart after a simulated order is placed — see
+// docs/features/phase-4-frontend-checkout-simulation/plan.md. It is not a
+// user-facing "clear cart" control; nothing in the cart UI calls it.
 
 export type CartLine = {
   itemId: string;
@@ -31,7 +36,8 @@ export type CartState = {
 export type CartAction =
   | { type: "ADD_ITEM"; itemId: string }
   | { type: "REMOVE_ITEM"; itemId: string }
-  | { type: "DECREMENT_ITEM"; itemId: string };
+  | { type: "DECREMENT_ITEM"; itemId: string }
+  | { type: "CLEAR_CART" };
 
 export const initialCartState: CartState = { lines: [] };
 
@@ -71,6 +77,8 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
       return {
         lines: state.lines.filter((line) => line.itemId !== action.itemId),
       };
+    case "CLEAR_CART":
+      return { lines: [] };
     default:
       return state;
   }
@@ -82,6 +90,7 @@ type CartContextValue = {
   addItem: (itemId: string) => void;
   decrementItem: (itemId: string) => void;
   removeItem: (itemId: string) => void;
+  clearCart: () => void;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -98,6 +107,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "DECREMENT_ITEM", itemId }),
       removeItem: (itemId: string) =>
         dispatch({ type: "REMOVE_ITEM", itemId }),
+      clearCart: () => dispatch({ type: "CLEAR_CART" }),
     }),
     [state],
   );

@@ -29,6 +29,7 @@ made, and what they cost.
 | [0008](#adr-0008--vitest-for-typescript-testing-library--jsdom-for-components) | Vitest for TypeScript, Testing Library + jsdom for components | Accepted |
 | [0009](#adr-0009--single-restaurant-scope-no-restaurant-entity) | Single-restaurant scope — no `Restaurant` entity | Accepted |
 | [0010](#adr-0010--a-real-cart-route-with-providers-hoisted-to-the-root-layout) | A real `/cart` route, with providers hoisted to the root layout | Accepted |
+| [0011](#adr-0011--a-simulated-frontend-checkout-that-knowingly-violates-the-order-state-authority-model) | A simulated frontend checkout that knowingly violates the order-state authority model | Accepted |
 
 ---
 
@@ -389,5 +390,112 @@ inline. Only cart navigation gained a route.
   is a small, isolated addition.
 - Any future route (e.g. a real order-confirmation page) now has a
   precedent to follow rather than a fresh decision to make.
+
+---
+
+## ADR-0011 — A simulated frontend checkout that knowingly violates the order-state authority model
+
+**Status:** Accepted · **Date:** 2026-09-19 (Phase 4) · Reverses part of the
+checkout exclusion recorded in `food-ordering-frontend-mvp.md` §4/§9/§10
+
+### Context
+
+`food-ordering-frontend-mvp.md` listed "checkout of any shape" as out of
+scope in §4, §9, and §10. `system-architecture.md` §4.4 classifies
+`PlaceOrder` as a business intent that only `commerce-api` may execute, and
+§5 makes order state authoritatively `commerce-api`'s — prices and totals
+are "never recomputed client-side or agent-side," and the frontend is never
+the source of truth for order identity or status.
+
+Phase 4 needed a way to demonstrate the cart-to-order journey end to end —
+without it, the product cannot show what an order even looks like, and the
+shape of an order goes unexercised in the frontend until `commerce-api`
+exists to define it for real. `CLAUDE.md`'s frontend-first,
+simulation-first scope, and the reasoning already applied to client-side
+pricing (`food-ordering-frontend-mvp.md` §7 item 3) and to the `/cart`
+route's own reversal of a routing exclusion (ADR-0010), both point the same
+way: build the simulation, name the violation explicitly, and keep it small
+enough to delete.
+
+### Decision
+
+Add a `/checkout` route that walks the existing local cart through a
+customer-details form, a review step, and a simulated confirmation,
+entirely in frontend state:
+
+- `lib/checkout/order.ts` mints a locally generated order identifier
+  (`ORD-XXXXXX`, via `lib/checkout/orderId.ts`) and an immutable
+  `SimulatedOrder` snapshot. Both are **fictions** — no `commerce-api` order
+  was created, no identity was validated, and nothing is sent, stored, or
+  logged anywhere.
+- The order total is exactly the cart subtotal, computed via the same
+  `lib/cart/pricing.ts` functions `/cart` already uses. No tax, fee, tip, or
+  discount concept is introduced.
+- The confirmation screen states, in plain language, that the order is
+  simulated, nothing was sent to a restaurant, and no payment was taken —
+  so the simulation cannot be mistaken for a real one by whoever sees it.
+- Placing the order clears the cart via a new `CLEAR_CART` action, reversing
+  Phase 3's explicit "clear cart" exclusion for this one purpose only —
+  `CLEAR_CART` is not exposed as a general user-facing "empty my cart"
+  feature.
+- No UI command, no `packages/contracts/` change, and no change to
+  `dispatch.ts`: placing a simulated order stays unreachable from the
+  validated-command pipeline, the same boundary Phase 3 held for cart
+  mutations.
+
+This narrows, rather than reverses, the rest of §4/§9/§10: real payments,
+real order creation, delivery/pickup selection, address fields, order
+history/tracking, and everything on the backend/AI/voice/infra list are
+still out of scope. Twelve open product decisions (delivery/pickup, which
+customer fields to require, tax/fees, submission latency, a failure path,
+and others) were posed and answered by the human before implementation —
+recorded in
+`docs/features/phase-4-frontend-checkout-simulation/requirements.md` rather
+than decided silently.
+
+### Consequences
+
+- The violation this ADR records is real, not cosmetic: for as long as
+  `apps/commerce-api` does not exist, this frontend is the only thing that
+  ever decides an order "happened," and it decides that with no business
+  validation, no idempotency, and no persistence. Anyone reading
+  `system-architecture.md` §5 in isolation would be right to flag this as a
+  contradiction — it is one, made deliberately and recorded here rather
+  than hidden, the same treatment §7 item 3 gives client-side pricing.
+- `lib/checkout/order.ts` carries a `TEMPORARY` header naming this ADR and
+  is deleted wholesale — not migrated, not adapted — the moment
+  `commerce-api` owns order creation. `food-ordering-frontend-mvp.md` §7
+  gained a fourth temporary item for exactly this reason.
+- The confirmation's plain-language disclosure is the one piece of this
+  simulation that is genuinely load-bearing rather than decorative: without
+  it, a user (or a screenshot of one) could mistake a simulated order for a
+  real one. It must survive any future redesign of this screen.
+- `CLEAR_CART` is a second, narrow reversal of an earlier decision (Phase
+  3's "no clear cart"). It is scoped to exactly one caller — a successfully
+  placed simulated order — and is not wired to any visible "clear cart"
+  button. A future general clear-cart feature is a new decision, not an
+  extension of this one.
+- ADR-0010 left open whether a root `app/error.tsx` actually covers a
+  nested route segment without its own `error.tsx`, to be confirmed live in
+  a later phase. `/checkout` makes the identical assumption and this
+  question is **still open for both routes** — the live forced-rejection
+  test was not performed, for the same tooling reason below. If it turns
+  out false, `app/checkout/error.tsx` (and, as a follow-up,
+  `app/cart/error.tsx`) is a small, isolated addition.
+- Every acceptance criterion, decision, and gap for this phase is recorded
+  in `docs/features/phase-4-frontend-checkout-simulation/`, including the
+  twelve product decisions this repository's documentation did not
+  previously answer (D1–D12) and one, D4 (which customer fields to
+  require), invented for this phase with no documentary basis at all —
+  flagged explicitly there as the first thing to revisit against real
+  requirements.
+- Same tooling gap as Phase 3, recorded rather than glossed over: the
+  interactive manual verification this UI would normally get — click-
+  through, live-region and focus behaviour with a real screen reader,
+  layout at 375/768/1280px — could not be performed; the Chrome browser
+  automation tool did not connect when checked explicitly at the start of
+  sub-phase 4.2. Automated tests (174, up from 100 before Phase 4) and
+  static server-rendered HTML checks via `curl` stand in, and are not
+  equivalent to a live browser session.
 
 ---

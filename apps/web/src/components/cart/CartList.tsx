@@ -42,6 +42,9 @@ export function CartList({
         })}
       </ul>
       <CartTotal totalCents={cartSubtotalCents(lines, categories)} />
+      <Link href="/checkout" className={styles.checkoutLink}>
+        Proceed to checkout
+      </Link>
     </>
   );
 }

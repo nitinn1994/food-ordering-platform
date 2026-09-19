@@ -10,3 +10,10 @@
   display: grid;
   gap: 0.5rem;
 }
+
+.checkoutLink {
+  display: inline-block;
+  margin-top: 1rem;
+  min-height: 44px;
+  padding: 0.5rem 1rem;
+}
