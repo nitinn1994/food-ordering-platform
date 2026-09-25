@@ -1,5 +1,5 @@
 {
-  "name": "@contracts/ui-commands",
+  "name": "@contracts/common",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,12 +13,11 @@
     "build": "node --import ../tools/register-relative-ts.mjs scripts/emit-schema.ts"
   },
   "dependencies": {
-    "@contracts/common": "workspace:*",
     "zod": "^4.1.12"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.7"
   }
 }

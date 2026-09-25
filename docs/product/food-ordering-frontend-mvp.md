@@ -3,7 +3,8 @@
 **Status:** Sections 1–8 (the original MVP) are implemented — Phase 1, fully
 delivered. Section 9 (Phase 2 additions) is implemented. Section 10 (Phase 3
 additions) is implemented. Section 11 (Phase 4 additions) is implemented.
-**Last updated:** 2026-09-19 (Phase 4, sub-phase 4.5)
+Section 12 (Phase 5 additions) is implemented.
+**Last updated:** 2026-09-25 (Phase 5, sub-phase 5.4)
 **Related:** [`system-architecture.md`](../architecture/system-architecture.md) ·
 [`phase-0-discovery.md`](../architecture/phase-0-discovery.md) ·
 [`architecture-decisions.md`](../architecture/architecture-decisions.md)
@@ -279,3 +280,88 @@ a render tree) and static server-rendered HTML checks via `curl`. This is
 the same substitution Phase 3 made for the same reason, and it carries the
 same caveat: it is not equivalent to driving a real browser, and should be
 the first thing verified before this phase is considered fully proven.
+
+## 12. Phase 5 additions
+
+Sections 1–11 above are the delivered Phase 1 + Phase 2 + Phase 3 + Phase 4
+MVP. This section layers Phase 5's scope on top — see
+`docs/features/phase-5-contract-foundation/` for the full plan.
+
+Phase 5 is a contracts-only phase. It adds nothing to `apps/web`'s user
+journeys, adds no new capability a user can see, and reverses nothing in
+§4/§9/§10/§11. Its product-facing purpose is indirect: it defines, ahead of
+`apps/ai-service` and `apps/commerce-api` existing, the vocabulary those
+services will use to talk to each other and to `apps/web` — so that when
+they are built, they are built *against* an interface rather than
+inventing one under time pressure.
+
+**Added, entirely inside `packages/contracts/`:**
+
+- A new shared-primitives package, `@contracts/common` — a contract version,
+  menu identifiers, quantity and money bounds, correlation and idempotency
+  identifiers, an ISO-8601 timestamp, and one structured error shape, used
+  by both other contract packages so each rule is defined once.
+- `@contracts/ui-commands` hardened: every schema became a strict object (an
+  unknown key is now rejected, not silently accepted and discarded), and
+  `SearchMenu.query` gained a maximum length — closing a real gap where an
+  agent-controlled string had no bound before reaching React state. A batch
+  envelope was added so one conversational turn's several UI commands share
+  one `contractVersion`/`correlationId`/`issuedAt`, with one malformed
+  command dropping without discarding its valid siblings — the "dropped
+  and logged" rule in §6 AC4/AC5 above, now also true at the batch level.
+- A new `@contracts/agent-intents` package — three business intents,
+  `AddItemToCart`, `RemoveItemFromCart`, `SetCartItemQuantity`, each
+  mirroring a cart mutation `apps/web` already implements (Phase 3's
+  `cartReducer`). Each intent request carries its own idempotency key.
+  Nothing about placing an order (`PlaceOrder`) was adopted — see below.
+- `apps/web` is now restricted, by ESLint, from importing
+  `@contracts/agent-intents` at all. This is enforcement of an existing
+  rule (§4.4 of `system-architecture.md`: a business intent is executed by
+  `commerce-api`, never rendered by the frontend), not a new one.
+- Every contract package now generates and commits a JSON Schema artifact,
+  guarded by a test that fails if the committed file drifts from its Zod
+  source — the mechanism ADR-0003 promised and this repository did not yet
+  have.
+
+**Explicitly declined, not deferred** — three candidates were considered and
+rejected, recorded in `docs/api/contracts.md`'s candidate register rather
+than silently added or silently dropped:
+
+- **`PlaceOrder` / `CreateOrder`** as a business intent. Its payload would
+  need the customer fields Phase 4 admittedly invented with no product
+  basis (§11, D4 there) and an idempotency design `system-architecture.md`
+  §8 still records as undesigned. Adopting it now would mean encoding two
+  known-unsound guesses into a contract three services will depend on.
+- **`ClearCart`** as a business intent. ADR-0011 makes `CLEAR_CART` the
+  internal mechanism of a placed order only, explicitly not a user-facing
+  feature — a `ClearCart` intent would create that feature by the back
+  door.
+- **`OpenCheckout`** as a UI command. §11 above decided `/checkout` is
+  reachable only from a non-empty `/cart`, not from navigation or a chat
+  command; an `OpenCheckout` command would reverse that without a new
+  product decision to justify it.
+
+One candidate was rejected outright rather than merely declined:
+**`ShowOrderConfirmation`** as a UI command. The confirmation screen is
+reachable only by having actually placed an order; a command that renders
+it would let an agent show a user an order that never happened — the exact
+failure §4.3 of `system-architecture.md` (agent output is untrusted input)
+exists to prevent, in its most damaging form.
+
+**Still out of scope**, unchanged from §4/§9/§10/§11: everything on the
+backend/AI/voice/payments/infra list, and now additionally
+`packages/contracts/api-contracts` specifically — no producer
+(`commerce-api`) exists yet, so writing its request/response shapes now
+would mean guessing at an interface, the same reasoning Phase 1 originally
+applied to `agent-intents` itself.
+
+**Known gap, recorded rather than hidden:** whether the JSON Schema this
+phase generates actually produces usable Pydantic models for
+`apps/ai-service` cannot be verified — that service does not exist. One
+specific wrinkle is already known and recorded in
+`docs/features/phase-5-contract-foundation/requirements.md`: a discriminated
+union is emitted as a plain `oneOf` with no JSON Schema `discriminator`
+keyword, so generated Pydantic will be a plain `Union` discriminated by its
+`Literal` fields, not a Pydantic tagged union — functional, but with
+different error messages than a tagged union would give. This is the first
+thing to verify once `apps/ai-service` is scaffolded.

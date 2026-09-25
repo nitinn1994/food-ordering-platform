@@ -1,5 +1,5 @@
 {
-  "name": "@contracts/ui-commands",
+  "name": "@contracts/agent-intents",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -17,6 +17,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@contracts/ui-commands": "workspace:*",
     "@types/node": "^22.0.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"

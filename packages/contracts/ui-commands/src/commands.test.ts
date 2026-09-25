@@ -110,3 +110,47 @@ describe("parseCommand — rejects malformed payloads (AC5)", () => {
     expect("command" in result).toBe(false);
   });
 });
+
+describe("parseCommand — rejects unknown keys, not silently (AC4)", () => {
+  // Phase 5: z.object silently strips an unknown key, but the generated
+  // JSON Schema says additionalProperties: false — a Python consumer built
+  // from that schema would reject a payload the old TypeScript accepted.
+  // z.strictObject makes both languages agree. See requirements.md D8.
+  it("rejects a ShowMenuCategory carrying an extra field", () => {
+    const result = parseCommand({
+      type: "ShowMenuCategory",
+      categoryId: "desserts",
+      onSelect: "javascript:alert(1)",
+    });
+    expect(result.accepted).toBe(false);
+  });
+
+  it("rejects an OpenCartPanel carrying an extra field", () => {
+    const result = parseCommand({
+      type: "OpenCartPanel",
+      open: true,
+      redirectUrl: "https://evil.example",
+    });
+    expect(result.accepted).toBe(false);
+  });
+});
+
+describe("SearchMenu.query is bounded (AC9)", () => {
+  it("accepts a query at the maximum length", () => {
+    const result = parseCommand({
+      type: "SearchMenu",
+      query: "a".repeat(200),
+    });
+    expect(result.accepted).toBe(true);
+  });
+
+  it("rejects a query over the maximum length", () => {
+    // An agent-controlled string with no bound is a value that can grow
+    // without limit before it ever reaches React state (requirements.md §24).
+    const result = parseCommand({
+      type: "SearchMenu",
+      query: "a".repeat(201),
+    });
+    expect(result.accepted).toBe(false);
+  });
+});

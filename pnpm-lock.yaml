@@ -168,12 +168,56 @@ importers:
         specifier: ^3.2.4
         version: 3.2.7(@types/node@22.20.2)(jsdom@30.0.1)(supports-color@7.2.0)
 
-  packages/contracts/ui-commands:
+  packages/contracts/agent-intents:
+    dependencies:
+      '@contracts/common':
+        specifier: workspace:*
+        version: link:../common
+      zod:
+        specifier: ^4.1.12
+        version: 4.6.4
+    devDependencies:
+      '@contracts/ui-commands':
+        specifier: workspace:*
+        version: link:../ui-commands
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.4
+        version: 3.2.7(@types/node@22.20.2)(jsdom@30.0.1)(supports-color@7.2.0)
+
+  packages/contracts/common:
     dependencies:
       zod:
         specifier: ^4.1.12
         version: 4.6.4
     devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.2
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@22.20.2)(jsdom@30.0.1)(supports-color@7.2.0)
+
+  packages/contracts/ui-commands:
+    dependencies:
+      '@contracts/common':
+        specifier: workspace:*
+        version: link:../common
+      zod:
+        specifier: ^4.1.12
+        version: 4.6.4
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.2
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

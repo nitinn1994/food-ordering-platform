@@ -148,18 +148,42 @@ load-bearing rather than advisory.
 
 ## 6. Contracts
 
-`packages/contracts` holds three schema families, each with exactly one
-producer and one consumer pair:
+`packages/contracts` holds four schema families. Three have exactly one
+producer and one consumer pair; the fourth, `common/`, is shared primitives
+with no consumer of its own — added in Phase 5 (ADR-0012) so that a menu
+identifier, a contract version, or a money amount is defined once rather
+than once per family:
 
 | Directory | Produced by | Consumed by | Purpose |
 | --------- | ----------- | ----------- | ------- |
+| `common/` | — | `ui-commands`, `agent-intents` | Shared primitives: contract version, identifiers, quantity, integer-cents money, correlation id, idempotency key, ISO-8601 timestamp, structured error |
 | `ui-commands/` | `ai-service` | `apps/web` | What the screen should do |
 | `agent-intents/` | `ai-service` | `commerce-api` | What should happen to commerce state |
-| `api-contracts/` | `commerce-api` | `apps/web`, `ai-service` | Request/response shapes for the commerce API |
+| `api-contracts/` | `commerce-api` | `apps/web`, `ai-service` | Request/response shapes for the commerce API — still empty; no producer exists yet |
+
+Both `ui-commands` and `agent-intents` wrap their schemas in an envelope
+carrying `contractVersion`, `correlationId`, and `issuedAt` (defined once in
+`common/`, spread into each). `ui-commands` batches — one conversational
+turn can produce several UI commands, validated in two stages so one
+malformed command does not discard its valid siblings (§3, step 7).
+`agent-intents` does not batch — one intent per request, each carrying its
+own `idempotencyKey`, because each is a distinct state change commerce-api
+must apply idempotently on retry.
+
+`apps/web` is additionally restricted, by ESLint
+(`no-restricted-imports`), from importing `@contracts/agent-intents` at
+all — the same "structural beats asserted" boundary `dispatch.ts` already
+holds for `cartStore` (§4.4), now enforced for the whole package rather
+than one file.
 
 Authoring pipeline (ADR-0003): Zod schemas are the source of truth → JSON
 Schema is generated → Pydantic models are generated for Python. No schema is
-written twice by hand.
+written twice by hand. Every contract package commits its generated JSON
+Schema under `schema/*.v1.json`, guarded by a test that regenerates each
+artifact in memory and fails if the committed file has drifted — the
+enforcement available in the absence of a CI pipeline to run codegen in
+(ADR-0012). Pydantic generation itself is not yet built; it is future work
+for whichever phase creates `apps/ai-service`.
 
 ## 7. Deliberately absent
 

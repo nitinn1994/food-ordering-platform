@@ -30,6 +30,7 @@ made, and what they cost.
 | [0009](#adr-0009--single-restaurant-scope-no-restaurant-entity) | Single-restaurant scope — no `Restaurant` entity | Accepted |
 | [0010](#adr-0010--a-real-cart-route-with-providers-hoisted-to-the-root-layout) | A real `/cart` route, with providers hoisted to the root layout | Accepted |
 | [0011](#adr-0011--a-simulated-frontend-checkout-that-knowingly-violates-the-order-state-authority-model) | A simulated frontend checkout that knowingly violates the order-state authority model | Accepted |
+| [0012](#adr-0012--contract-foundation-envelope-metadata-versioning-and-a-fourth-contracts-family) | Contract foundation: envelope, metadata, versioning, and a fourth contracts family | Accepted |
 
 ---
 
@@ -497,5 +498,135 @@ than decided silently.
   sub-phase 4.2. Automated tests (174, up from 100 before Phase 4) and
   static server-rendered HTML checks via `curl` stand in, and are not
   equivalent to a live browser session.
+
+---
+
+## ADR-0012 — Contract foundation: envelope, metadata, versioning, and a fourth contracts family
+
+**Status:** Accepted · **Date:** 2026-09-19 (Phase 5) · Extends ADR-0003,
+narrows §6 of `system-architecture.md`
+
+### Context
+
+ADR-0003 committed to a pipeline — Zod authored → JSON Schema generated →
+Pydantic generated — but nothing in the repository generated JSON Schema
+until this phase, and `packages/contracts/agent-intents` was an empty
+directory with no vocabulary at all. Two boundaries
+`system-architecture.md` §4.3/§4.4 name as load-bearing (agent output is
+untrusted input; a UI command must never change commerce state) were
+therefore mechanized for exactly one producer (`ui-commands`) and not the
+other (`agent-intents`).
+
+A concrete divergence was also found and verified, not merely anticipated:
+`z.object`'s generated JSON Schema says `additionalProperties: false`, but
+`z.object` itself silently strips unknown keys at runtime. A Python
+consumer built from that generated schema would reject a payload the
+TypeScript consumer accepted — the exact drift ADR-0003 exists to prevent,
+present in the shipped contract before the generation pipeline even existed.
+
+### Decision
+
+Four decisions, taken together as the Phase 5 contract foundation. Full
+rationale for each numbered item lives in
+`docs/features/phase-5-contract-foundation/requirements.md` (D1–D13); this
+entry records the outcome and the parts that change what
+`system-architecture.md` says.
+
+1. **A fourth contracts family, `packages/contracts/common`.** `system-architecture.md`
+   §6 named three families with one producer/consumer pair each. `common`
+   is different in kind: it holds primitives (`contractVersion`, menu
+   identifiers, correlation id, idempotency key, integer-cents money, an
+   ISO-8601 timestamp, and a shared structured-error shape) consumed by
+   both `ui-commands` and `agent-intents`, so the same rule is not
+   authored twice. §6 is updated to reflect this (D3).
+2. **Every contract schema is a strict object.** `z.object` → `z.strictObject`
+   across `ui-commands` and throughout `agent-intents`. An unknown key is
+   now rejected identically in both generated artifacts and both runtime
+   validators — this is a behaviour change to the already-shipped
+   `ui-commands` package, made deliberately to close the divergence above
+   (D8).
+3. **Two envelopes, not one, because intents and commands fail differently.**
+   A UI command batch (`contractVersion`, `correlationId`, `issuedAt`,
+   `commands[]`, capped at 10) is validated in two stages — the envelope as
+   a whole, then each command individually — so one malformed command
+   drops without discarding its valid siblings, preserving the
+   "dropped and logged" behaviour §4.3 already requires of a single
+   command. A business-intent request (`contractVersion`, `correlationId`,
+   `idempotencyKey`, `issuedAt`, one `intent`) is validated as a single
+   unit: there is exactly one intent per request, so there is nothing
+   partial to preserve (D4).
+4. **`packages/contracts/agent-intents` now exists**, with exactly the three
+   intents observed in the frontend's own implemented behaviour —
+   `AddItemToCart`, `RemoveItemFromCart`, `SetCartItemQuantity` — and
+   nothing invented beyond it. `PlaceOrder`, `ClearCart`, and two UI-command
+   candidates (`OpenCheckout`, `ShowOrderConfirmation`) were considered and
+   explicitly declined; they are registered as candidates in
+   `docs/api/contracts.md`, not silently dropped (D2, D6, D7).
+
+Supporting decisions, each with a one-line reason: integer major version,
+not semver, because this is a lockstep monorepo and nothing consumes a
+minor number (D5); ISO-8601 on the wire, epoch millis stay internal to
+`uiStore` (D9); generated JSON Schema is committed and guarded by a test
+that regenerates it in memory and fails on drift, because there is no CI to
+run codegen in (D10); `apps/web` is restricted by ESLint
+(`no-restricted-imports`) from importing `@contracts/agent-intents` at all,
+the same "structural beats asserted" reasoning `dispatch.ts` already
+applies to `cartStore` (D11); `packages/contracts/api-contracts` stays
+empty — no producer exists yet, and writing it now would mean guessing at
+an interface, the same reasoning Phase 1 applied to `agent-intents` itself
+(D12); no `cartId` in an intent — the system is single-user, so cart
+resolution is `commerce-api`'s job, not this contract's (D13).
+
+### Consequences
+
+- **`system-architecture.md` §6 now names four contract families, not
+  three.** Read in isolation, the older text would be wrong; it is updated
+  in the same change as this ADR, not left stale.
+- **The cross-language guarantee ADR-0003 promised now has a mechanism.**
+  Every package emits committed JSON Schema (`schema/*.v1.json`), and a
+  freshness test regenerates each artifact in memory and fails the suite on
+  drift. This was verified to actually fail, not just pass vacuously: each
+  artifact was deliberately corrupted once during implementation and the
+  corresponding test failed as intended.
+- **`agent-intents` has a test-only, dev-only dependency on `ui-commands`**
+  (`boundary.test.ts` imports `parseCommand` to prove a UI command is
+  rejected as an intent, and vice versa). This is not a runtime dependency
+  and does not appear in either package's public exports; it exists only so
+  the boundary between the two vocabularies is a tested property in both
+  directions, not an assertion holding in only one.
+- **The `z.strictObject` change is a real behaviour change to a package
+  three UI journeys (Phases 1–4) already depend on.** It was verified,
+  not assumed: `apps/web`'s full test suite (174 tests) was re-run
+  unchanged in count and outcome after the change, and its `typecheck`,
+  `lint`, and `build` were all re-run clean.
+- **A genuine tooling gap was found and closed, confined to build tooling
+  only.** Every contract package's `src/*.ts` uses extensionless relative
+  imports — required, because `apps/web`'s `tsconfig.json` has no
+  `allowImportingTsExtensions` and its `tsc` run type-checks straight
+  through `ui-commands` into `common`'s source. But plain Node's native
+  TypeScript execution (used to run each package's `scripts/emit-schema.ts`
+  directly, with no new dependency and no build step) requires an explicit
+  extension on every relative specifier — verified with a minimal repro,
+  not assumed. `packages/contracts/tools/` holds a two-file Node module
+  customization hook, used only by each package's `build` script, that
+  retries a failed relative resolution with `.ts` appended. It is invisible
+  to `tsc` and Vitest — both already resolve the extensionless form
+  correctly — and invisible to every consumer, since nothing imports
+  `tools/` except the `build` scripts themselves. `apps/web`'s typecheck
+  was re-verified clean with this in place.
+- **`turbo.json`'s `build` task outputs (`dist/**`, `.next/**`) do not list
+  `schema/**`.** `turbo run build`/`typecheck` warns `no output files found`
+  for each contracts package's `build` task. Harmless today — the
+  artifacts are committed and freshness-tested independently of turbo's
+  cache — but recorded as a follow-up rather than silently accepted:
+  `turbo.json` should eventually declare `schema/**` as an output for the
+  contracts packages.
+- **Nothing about `apps/ai-service` or `apps/commerce-api` was built or
+  assumed working.** Whether the generated JSON Schema produces usable
+  Pydantic — and specifically, whether a discriminated union's `oneOf` (no
+  JSON Schema `discriminator` keyword is emitted) generates a true tagged
+  union or merely a plain `Union` — is recorded as an open question in
+  `docs/features/phase-5-contract-foundation/requirements.md`, not answered
+  here. It cannot be answered until that service exists.
 
 ---

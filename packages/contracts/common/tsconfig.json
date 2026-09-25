@@ -1,0 +1,9 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    // scripts/ imports src/ with an explicit .ts specifier so that Node can
+    // run it directly (native type stripping does no path rewriting).
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/**/*", "scripts/**/*"]
+}
