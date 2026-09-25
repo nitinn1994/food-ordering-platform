@@ -31,6 +31,7 @@ made, and what they cost.
 | [0010](#adr-0010--a-real-cart-route-with-providers-hoisted-to-the-root-layout) | A real `/cart` route, with providers hoisted to the root layout | Accepted |
 | [0011](#adr-0011--a-simulated-frontend-checkout-that-knowingly-violates-the-order-state-authority-model) | A simulated frontend checkout that knowingly violates the order-state authority model | Accepted |
 | [0012](#adr-0012--contract-foundation-envelope-metadata-versioning-and-a-fourth-contracts-family) | Contract foundation: envelope, metadata, versioning, and a fourth contracts family | Accepted |
+| [0013](#adr-0013--nestjs-commerce-api-foundation-toolchain-validation-error-model-and-boundary) | NestJS commerce-api foundation: toolchain, validation, error model, and boundary | Accepted |
 
 ---
 
@@ -628,5 +629,146 @@ resolution is `commerce-api`'s job, not this contract's (D13).
   union or merely a plain `Union` — is recorded as an open question in
   `docs/features/phase-5-contract-foundation/requirements.md`, not answered
   here. It cannot be answered until that service exists.
+
+---
+
+## ADR-0013 — NestJS commerce-api foundation: toolchain, validation, error model, and boundary
+
+**Status:** Accepted · **Date:** 2026-09-25 (Phase 6)
+
+### Context
+
+`apps/commerce-api` was an empty directory. `system-architecture.md` §1 and
+§5 make it the sole authority for menu, cart, order, pricing, and payment
+state, and `packages/contracts` (Phase 5) designed the vocabulary and error
+shape it would consume — but nothing constructed it yet. Phase 6's job was
+the transport boundary underneath that authority: validation, error shape,
+correlation, versioning, configuration, and logging, with no Menu, Cart, or
+Order behaviour.
+
+Two concrete problems shaped the decisions below, neither guessed at —
+both found and verified during implementation:
+
+1. **The contracts packages ship raw TypeScript with no build output**
+   (`exports: "./src/index.ts"`, extensionless relative imports). NestJS
+   needs `emitDecoratorMetadata` for its dependency injection, which neither
+   Vitest's default esbuild transform nor plain Node's native TypeScript
+   execution provides.
+2. **A real middleware-ordering bug**, not merely a risk anticipated in
+   planning: cross-cutting middleware wired through `NestModule.configure()`
+   binds during `app.init()`, strictly *after* an `app.useBodyParser(...)`
+   call made right after `NestFactory.create()`. A live `curl` check against
+   the built app — not any test, at the time — found a real 413 (payload too
+   large) response missing its `X-Request-Id`/`X-Correlation-Id` headers,
+   because the body parser ran before the middleware that sets them.
+
+### Decision
+
+Nine decisions, taken together as the Phase 6 commerce-api foundation. Full
+rationale for each lives in
+`docs/features/phase-6-commerce-api-foundation/requirements.md` (OD1–OD11);
+this entry records the outcome.
+
+1. **Toolchain: one Vite + SWC pipeline, not the Nest CLI.** `vitest` +
+   `unplugin-swc` for tests, `vite build` (SSR mode) for the built
+   `dist/main.js`, `vite-node --watch` for `dev`. `vite build`'s Rollup
+   bundles `@contracts/*`'s raw-TypeScript source inline (resolved through
+   its `exports` field, same as any bundler) and externalizes every real
+   npm dependency (`@nestjs/*`, `zod`, `rxjs`, …), so nothing in
+   `packages/contracts` changed to make this work. `unplugin-swc` reads
+   `experimentalDecorators`/`emitDecoratorMetadata` straight from
+   `tsconfig.json` — verified from its own documented default, not assumed.
+2. **Validation: Nest 12's built-in `StandardSchemaValidationPipe`, not
+   `class-validator`.** Zod 4 schemas implement the Standard Schema spec
+   directly (`@Body({ schema: someZodSchema })`), so the Phase 5 contract
+   schemas validate requests with no DTO duplication and no new dependency.
+   A custom `exceptionFactory` (`common/validation/validation.ts`) maps
+   Standard Schema issues to a `@contracts/common` `ContractError`:
+   `INVALID_PAYLOAD`, or `UNSUPPORTED_CONTRACT_VERSION` specifically when
+   `contractVersion` itself fails; `field` and `message` are bounded (64 /
+   500 chars) and never include the rejected value.
+3. **Error body: a bare `@contracts/common` `ContractError`, always.**
+   `AllExceptionsFilter` is the one place any thrown error becomes a
+   response: `ApiException` (this service's own, carrying a full
+   `ContractError` and status), a Nest `HttpException` (404 →
+   `ROUTE_NOT_FOUND`, 413/415 mapped explicitly), body-parser's own
+   `entity.too.large` error (detected structurally — it is never a Nest
+   exception), or anything else, which collapses to a generic 500
+   `INTERNAL_ERROR` with no stack, no exception message, and no payload
+   echo; the full detail is logged server-side with the request's id
+   instead. API-level codes (`ROUTE_NOT_FOUND`, `PAYLOAD_TOO_LARGE`,
+   `UNSUPPORTED_MEDIA_TYPE`, `INTERNAL_ERROR`) live in `commerce-api`
+   itself, reusing — not redefining — `INVALID_PAYLOAD` and
+   `UNSUPPORTED_CONTRACT_VERSION` from `@contracts/common`, per that
+   package's own stated intent (`errors.ts`: domain codes "arrive with the
+   service that owns them").
+4. **Every cross-cutting HTTP concern lives in one function,
+   `configure-app.ts`, called by hand — not through `NestModule.configure()`.**
+   This is the direct fix for the ordering bug above. `main.ts` and every
+   API test call the identical `configureApp(app)`: URI versioning,
+   request-context middleware, a JSON-only content-type guard, the
+   size-limited body parser, request logging, the validation pipe, the
+   exception filter, and shutdown hooks, registered through `app.use()`/
+   `app.useBodyParser()` in one explicit, verified order. `AppModule` itself
+   now holds no middleware wiring at all.
+5. **Versioning: URI `/v1` for business routes, `/health` exempted via
+   `VERSION_NEUTRAL`.** A liveness check has no contract to version.
+6. **Logging: Nest's own `ConsoleLogger` (`json: true`), subclassed as
+   `AppLogger` to attach the active request's `requestId`/`correlationId`
+   automatically from `AsyncLocalStorage`**, rather than `nestjs-pino` or a
+   new dependency. Verified structurally, not merely believed: `.log()`
+   writes to stdout, `.error()` to stderr (each per `ConsoleLogger`'s own
+   doc comments) — a test that only spied on stdout would silently miss
+   every error-level log line.
+7. **Configuration: a Zod env schema (`env.schema.ts`), not
+   `@nestjs/config`.** Parsed once in `main.ts` before the Nest application
+   is created; an invalid value exits the process non-zero, naming the
+   field and never printing the value. No `dotenv` either — Node 24's
+   `--env-file-if-exists` loads `.env` — though CLI-flag placement matters:
+   the flag can be given directly to `node` (`start`), but is refused by
+   Node when passed via `NODE_OPTIONS` — verified by running it, not
+   assumed — so `dev` invokes `vite-node`'s own entry file
+   (`node_modules/vite-node/vite-node.mjs`) directly rather than through its
+   `bin` shim, the same "reach into `node_modules` directly" precedent
+   `packages/contracts/tools/` already set for a different tool.
+8. **No domain module shells.** `HealthModule` is the only module besides
+   `ConfigModule`; Menu, Cart, and Order arrive one per phase, each with
+   controller → service → repository interface, only `modules/<domain>/
+  infrastructure/` touching storage, no cycles. No umbrella `Commerce`
+   module.
+9. **ESLint boundary, mirroring D11's precedent:** `apps/commerce-api` is
+   restricted from importing `@contracts/ui-commands` (it executes business
+   intents; it does not produce UI commands) and from importing anything
+   under `apps/web`. Verified to actually fail: a temporary import was
+   added, the lint run shown to fail with the expected message, then
+   removed.
+
+### Consequences
+
+- **The toolchain choice is unverified for anything beyond this
+  foundation.** Whether `vite build`'s inlining strategy continues to work
+  cleanly once `packages/contracts` grows larger schemas, or once a real
+  database client is added as a dependency, is not yet known.
+- **`configure-app.ts` is now the single source of truth for HTTP
+  behaviour.** Any future middleware, guard, or interceptor belongs there,
+  not in `AppModule` or scattered across `main.ts` — the ordering bug this
+  ADR records is the concrete cost of not doing that from the start.
+- **The Standard Schema validation pipe couples request validation to
+  Zod's `~standard` interface.** If a future domain schema cannot be
+  expressed as a Zod schema (unlikely, but not yet tested at scale), this
+  pipe would need a custom validator alongside it.
+- **No authentication, no rate limiting, no CORS.** Per `CLAUDE.md`'s
+  deferred list; `system-architecture.md` §8's gaps 3 (idempotency) and 4
+  (authorization) remain open, and this phase adds no new mechanism for
+  either — `X-Correlation-Id` is carried, not yet consumed by anything.
+- **No database.** ADR-0004 stays `Proposed`; the first domain phase
+  decides it. `GET /health` has no dependency to check and is liveness
+  only, deliberately with no readiness endpoint.
+- **A real bug was caught only by manual verification, not by the test
+  suite, until the tests were extended afterward.** Recorded as a
+  methodology note, not just a fix: an automated assertion (header
+  presence on a 413 response) existed only after the live check surfaced
+  the gap. `test/validation.e2e.test.ts` and `test/app.e2e.test.ts` both
+  assert header presence on every response class now, including errors.
 
 ---

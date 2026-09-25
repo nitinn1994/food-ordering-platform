@@ -50,4 +50,46 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // The same boundary as above, the other direction: commerce-api
+    // executes business intents; it never produces UI commands — that is
+    // ai-service's job, rendered only by apps/web (system-architecture.md
+    // §4.4, §6). Structural rather than asserted, mirroring D11
+    // (docs/features/phase-6-commerce-api-foundation/plan.md, §14).
+    files: ["apps/commerce-api/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@contracts/ui-commands",
+              message:
+                "apps/commerce-api must never import ui-commands — UI " +
+                "commands are produced by ai-service and rendered only by " +
+                "apps/web (system-architecture.md §4.4, §6).",
+            },
+          ],
+          patterns: [
+            {
+              // apps/web has no package scope and no path alias, so the
+              // only way to reach it from here is a relative import — and
+              // a relative specifier never contains the literal substring
+              // "apps/web": going up out of apps/commerce-api's own tree
+              // lands directly in "web/" (the shared parent is "apps/",
+              // which a relative path climbs past without naming), e.g.
+              // "../../web/src/lib/money", never "../../apps/web/...".
+              // "**/apps/web/**" matched nothing real — verified by adding
+              // exactly that import and confirming the rule stayed silent
+              // — which is the defect this pattern replaces.
+              group: ["**/web/**"],
+              message:
+                "apps/commerce-api must never import from apps/web — the " +
+                "commerce API has no dependency on the frontend.",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

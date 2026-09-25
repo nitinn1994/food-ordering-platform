@@ -1,17 +1,21 @@
 # Getting Started
 
-**Last updated:** 2026-09-25 (Phase 5, sub-phase 5.4)
-**Status:** `apps/web` and all three of `packages/contracts/{common,ui-commands,
-agent-intents}` are scaffolded and working — Phase 1 (frontend foundation),
-Phase 2 (menu browsing: search, item detail, loading/error states), Phase 3
-(frontend cart simulation: full cart CRUD, a `/cart` route, cross-route
-persistence), Phase 4 (frontend checkout simulation: a `/checkout` route,
-customer-details form, review, and a simulated order confirmation), and
-Phase 5 (contract foundation: shared primitives, envelopes, versioning,
-strict validation, and generated JSON Schema for both `ui-commands` and the
-newly-added `agent-intents`) are all complete. `apps/ai-service` and
-`apps/commerce-api` do not exist yet — Phase 5 defines the contracts they
-will consume; it does not build either service.
+**Last updated:** 2026-09-25 (Phase 6, sub-phase 6.5)
+**Status:** `apps/web`, all three of `packages/contracts/{common,ui-commands,
+agent-intents}`, and now `apps/commerce-api` are scaffolded and working —
+Phase 1 (frontend foundation), Phase 2 (menu browsing: search, item detail,
+loading/error states), Phase 3 (frontend cart simulation: full cart CRUD, a
+`/cart` route, cross-route persistence), Phase 4 (frontend checkout
+simulation: a `/checkout` route, customer-details form, review, and a
+simulated order confirmation), Phase 5 (contract foundation: shared
+primitives, envelopes, versioning, strict validation, and generated JSON
+Schema for both `ui-commands` and `agent-intents`), and Phase 6 (NestJS
+commerce-api foundation: configuration, request validation against the
+Phase 5 contract schemas, a structured error model, correlation and request
+logging, URI versioning, and `GET /health`) are all complete. `commerce-api`
+implements no Menu, Cart, or Order route yet — Phase 6 built the transport
+boundary they will be built on, not the domains themselves. `apps/ai-service`
+does not exist yet.
 
 ---
 
@@ -23,18 +27,17 @@ must actually exist, and **a command that does not exist must not be listed
 here just because it looks plausible.** Every command below has been run and
 verified as of this update.
 
-Whichever phase next scaffolds `apps/ai-service` or `apps/commerce-api` must
-update this file in the same change. A scaffolding phase that leaves this file
-stale has not finished.
+Whichever phase next scaffolds `apps/ai-service` must update this file in the
+same change. A scaffolding phase that leaves this file stale has not finished.
 
 ## Current state
 
 | | |
 | --- | --- |
-| Applications | `apps/web` — Next.js, TypeScript, working. `apps/ai-service`, `apps/commerce-api` — empty directories, not scaffolded. |
+| Applications | `apps/web` — Next.js, TypeScript, working. `apps/commerce-api` — NestJS, TypeScript, working (Phase 6 foundation only: no Menu/Cart/Order route). `apps/ai-service` — empty directory, not scaffolded. |
 | Shared packages | `packages/contracts/common`, `ui-commands`, `agent-intents` — Zod schemas, all working, each with committed generated JSON Schema. `api-contracts` — still empty, no producer yet. |
-| Dependency manifests | Root `package.json` + `pnpm-workspace.yaml` (pnpm + Turborepo, ADR-0002); `apps/web/package.json`; one `package.json` per `packages/contracts/*` package. |
-| Build tooling | Turborepo (`turbo.json`), TypeScript (`tsconfig.base.json`), ESLint flat config (`eslint.config.mjs`, now also enforcing `apps/web`'s `agent-intents` import restriction — ADR-0012), Vitest per package. Each contracts package also has a `build` script (`scripts/emit-schema.ts`) that generates its committed JSON Schema; `packages/contracts/tools/` holds a small Node module hook those scripts use, and only they use. |
+| Dependency manifests | Root `package.json` + `pnpm-workspace.yaml` (pnpm + Turborepo, ADR-0002); `apps/web/package.json`; `apps/commerce-api/package.json`; one `package.json` per `packages/contracts/*` package. |
+| Build tooling | Turborepo (`turbo.json`), TypeScript (`tsconfig.base.json`), ESLint flat config (`eslint.config.mjs`, enforcing `apps/web`'s `agent-intents` import restriction — ADR-0012 — and `apps/commerce-api`'s `ui-commands`/`apps/web` import restriction — ADR-0013), Vitest per package. Each contracts package also has a `build` script (`scripts/emit-schema.ts`) that generates its committed JSON Schema; `packages/contracts/tools/` holds a small Node module hook those scripts use, and only they use. `apps/commerce-api`'s own `build` is `vite build` (SSR mode) — a different mechanism, since it produces a runnable service, not a JSON Schema artifact (ADR-0013). |
 | CI | None. `apps/ai-service` will need its own invocation path when it exists — see ADR-0002's residual risk. |
 | Git | Repository initialised; no commits yet. |
 
@@ -51,35 +54,38 @@ Verified working with:
 ## Commands
 
 Run from the repository root unless noted. All verified passing as of
-2026-09-25 (Phase 5, sub-phase 5.4).
+2026-09-25 (Phase 6, sub-phase 6.5).
 
 | Task | Command | Status |
 | ---- | ------- | ------ |
 | Install | `pnpm install` | Verified |
 | Type check (all packages) | `pnpm turbo run typecheck` | Verified |
 | Lint (all packages) | `pnpm turbo run lint` | Verified |
-| Test (all packages) | `pnpm turbo run test` | Verified — 281 tests (43 `common` + 33 `ui-commands` + 31 `agent-intents` + 174 `web`), up from 190 before Phase 5. `apps/web`'s 174 are unchanged in count and outcome from Phase 4. |
-| Build (all packages) | `pnpm turbo run build` | Verified — `/`, `/cart`, `/checkout`, `/_not-found` all prerender; each contracts package's `build` regenerates its committed `schema/*.v1.json` |
+| Test (all packages) | `pnpm turbo run test` | Verified — 329 tests (43 `common` + 33 `ui-commands` + 31 `agent-intents` + 174 `web` + 48 `commerce-api`), up from 281 before Phase 6. The first four are unchanged in count and outcome from Phase 5. |
+| Build (all packages) | `pnpm turbo run build` | Verified — `/`, `/cart`, `/checkout`, `/_not-found` all prerender; each contracts package's `build` regenerates its committed `schema/*.v1.json`; `commerce-api`'s `build` produces `dist/main.js` |
 | Generate one contract package's JSON Schema | `pnpm --filter @contracts/<name> build` | Verified for `common`, `ui-commands`, `agent-intents` — run after any schema change, before committing |
 | Run `apps/web` in development | `pnpm --filter web dev` | Verified — serves on http://localhost:3000; `/cart` and `/checkout` also live |
+| Run `apps/commerce-api` in development | `pnpm --filter commerce-api dev` | Verified — serves on http://127.0.0.1:3001; `GET /health` → `200 {"status":"ok"}` |
+| Run `apps/commerce-api`'s built output | `pnpm --filter commerce-api build && pnpm --filter commerce-api start` | Verified — same `GET /health` response, from `dist/main.js` |
 
-**Not verified this phase:** interactive browser checks. `NOT_APPLICABLE` for
-Phase 5 specifically — it changed no UI — but the gap itself is still open
-from Phase 4: the Chrome browser automation tool did not connect when
-checked explicitly at the start of sub-phase 4.2, and this phase did not
-retry it (there was no UI change to verify with it). Everything Phase 5
-changed was confirmed by `pnpm turbo run {typecheck,lint,test,build}`, not
-by a browser session — appropriate here since nothing in `apps/web`'s
-rendered output changed, but recorded rather than silently assumed fine.
+**Not verified this phase, same gap as Phases 3–5:** interactive browser
+checks against `apps/web`. `NOT_APPLICABLE` for Phase 6 specifically — it
+changed no UI — but the Chrome browser automation tool gap recorded since
+Phase 4 remains open. `apps/commerce-api` has no UI to check with a browser
+tool; it was verified instead by `curl` against both `dev` and the built
+`start` output, directly, for every response class in
+[`docs/api/commerce-api.md`](../api/commerce-api.md) §6 (200, 404, 413, 415,
+500) — not merely by its automated test suite. One real bug (a 413 response
+missing its correlation headers) was found this way, by a live check, before
+any test caught it; see ADR-0013.
 
 `packages/contracts/{common,ui-commands,agent-intents}` have no `dev`/`start`
-command — they are libraries, not runnable services. `apps/ai-service` and
-`apps/commerce-api` have no commands at all, because they do not exist:
+command — they are libraries, not runnable services. `apps/ai-service` has
+no commands at all, because it does not exist:
 
 | Task | Command | Status |
 | ---- | ------- | ------ |
 | `apps/ai-service` — anything | — | `NOT_CONFIGURED` |
-| `apps/commerce-api` — anything | — | `NOT_CONFIGURED` |
 
 `NOT_CONFIGURED` means the project has no such check set up. It does not mean
 passing, and it does not mean failing. See `.claude/rules/validation.md` for
@@ -127,7 +133,45 @@ apps/
     src/lib/fixtures/        menu.ts (temporary)
     src/lib/money.ts         integer-cents formatting
   ai-service/     Python service — not yet scaffolded
-  commerce-api/   NestJS service — not yet scaffolded
+  commerce-api/   NestJS service — scaffolded, working (Phase 6 foundation
+                   only; no Menu/Cart/Order route)
+    src/main.ts               bootstrap: parse env, fail-fast, build logger,
+                               NestFactory.create, configureApp, listen
+    src/configure-app.ts      every cross-cutting HTTP concern in one place
+                               and one verified order — shared by main.ts
+                               and every API test (versioning, request
+                               context, content-type guard, body parser,
+                               request logging, validation pipe, exception
+                               filter, shutdown hooks)
+    src/app.module.ts         wires ConfigModule + HealthModule; no HTTP
+                               middleware of its own (see configure-app.ts)
+    src/config/               env.schema.ts (Zod, fail-fast), config.module.ts
+                               (APP_CONFIG, provided by main.ts's already-
+                               validated config), test-config.ts (test-only)
+    src/common/errors/        api-error-codes.ts, api.exception.ts,
+                               all-exceptions.filter.ts — every thrown error
+                               becomes exactly a @contracts/common
+                               ContractError
+    src/common/validation/    validation.ts — Standard Schema issues →
+                               ContractError (INVALID_PAYLOAD /
+                               UNSUPPORTED_CONTRACT_VERSION)
+    src/common/http/          json-body.middleware.ts — JSON-only
+                               content-type guard (415) + the 16kb body
+                               limit's constant
+    src/common/logging/       logger.ts (AppLogger: JSON logs carrying
+                               requestId/correlationId automatically),
+                               request-log.middleware.ts
+    src/common/request-context/  AsyncLocalStorage-backed request/
+                               correlation ids; X-Request-Id always
+                               server-generated, X-Correlation-Id echoed if
+                               valid else generated
+    src/health/               health.module.ts, health.controller.ts (GET
+                               /health, unversioned), health.service.ts
+    test/                     app.e2e.test.ts, validation.e2e.test.ts (real
+                               HTTP via listen(0) + fetch, no supertest),
+                               fixtures/validation-fixture.controller.ts
+                               (test-only, proves the pipeline against a
+                               real @contracts/agent-intents schema)
 packages/
   contracts/
     common/         scaffolded, working (Phase 5) — shared primitives, no
@@ -155,11 +199,14 @@ docs/
   architecture/  product/  api/  decisions/  development/
   api/contracts.md                         contract naming, worked examples,
                                             the declined-candidate register
+  api/commerce-api.md                      HTTP conventions, error codes,
+                                            headers, status table
   features/phase-1-web-foundation/         requirements.md, plan.md, test-plan.md
   features/phase-2-menu-browsing/          requirements.md, plan.md, test-plan.md
   features/phase-3-frontend-cart-simulation/  requirements.md, plan.md, test-plan.md
   features/phase-4-frontend-checkout-simulation/  requirements.md, plan.md, test-plan.md
   features/phase-5-contract-foundation/    requirements.md, plan.md, test-plan.md
+  features/phase-6-commerce-api-foundation/  requirements.md, plan.md, test-plan.md
 .claude/          ForgeFlow — rules, commands, agents, skills, workflows
 ```
 
@@ -193,23 +240,30 @@ replaces them — see
 ## Next step
 
 Phase 1 (sub-phases 1.1–1.4), Phase 2 (sub-phases 2.1–2.4), Phase 3
-(sub-phases 3.1–3.5), Phase 4 (sub-phases 4.1–4.5), and Phase 5 (sub-phases
-5.1–5.4) are all implemented: workspace foundation, the `ui-commands`
-contracts package (5 commands, unchanged since Phase 2), the menu UI with
-search and item detail, real loading/error states via an async `getMenu()`
-seam, a complete frontend-only cart (add/remove/increase/decrease,
-subtotals, item count, a `/cart` route with cross-route persistence), the
-validated command pipeline with its adversarial rejection path, a
-frontend-only checkout simulation (`/checkout`: customer-details form,
-review, a simulated order confirmation, and clearing the cart on success)
-that knowingly and temporarily violates the order-state authority model —
-recorded in ADR-0011, not hidden — and now a contract foundation: shared
-primitives (`@contracts/common`), a hardened and enveloped `ui-commands`,
-and a new `@contracts/agent-intents` with three cart intents, all with
-committed, freshness-tested JSON Schema (ADR-0012).
+(sub-phases 3.1–3.5), Phase 4 (sub-phases 4.1–4.5), Phase 5 (sub-phases
+5.1–5.4), and Phase 6 (sub-phases 6.1–6.5) are all implemented: workspace
+foundation, the `ui-commands` contracts package (5 commands, unchanged since
+Phase 2), the menu UI with search and item detail, real loading/error states
+via an async `getMenu()` seam, a complete frontend-only cart
+(add/remove/increase/decrease, subtotals, item count, a `/cart` route with
+cross-route persistence), the validated command pipeline with its
+adversarial rejection path, a frontend-only checkout simulation
+(`/checkout`: customer-details form, review, a simulated order confirmation,
+and clearing the cart on success) that knowingly and temporarily violates
+the order-state authority model — recorded in ADR-0011, not hidden — a
+contract foundation: shared primitives (`@contracts/common`), a hardened and
+enveloped `ui-commands`, and `@contracts/agent-intents` with three cart
+intents, all with committed, freshness-tested JSON Schema (ADR-0012), and
+now a NestJS commerce-api foundation: a Vite + SWC toolchain running the
+contract packages' raw-TypeScript source unmodified, Zod-validated
+configuration, request validation against the Phase 5 contract schemas
+(Nest's built-in Standard Schema pipe), a structured error model
+(`@contracts/common`'s own `ContractError`, nothing else), request
+correlation and JSON logging, URI versioning, and `GET /health` (ADR-0013).
 
-`apps/commerce-api` and `apps/ai-service` are the next major phases and have
-not been planned yet. Phase 5 built the contracts they will consume against;
-it built neither service.
+Menu, Cart, and Order are the next major phases and have not been planned
+yet — `apps/commerce-api` has no domain route of any kind. Phase 6 built the
+transport boundary they will be built on, not the domains themselves.
+`apps/ai-service` remains unplanned too.
 
-Start planning either with `/forge`, which will route it to `/plan`.
+Start planning any of them with `/forge`, which will route it to `/plan`.

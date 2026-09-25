@@ -156,10 +156,19 @@ than once per family:
 
 | Directory | Produced by | Consumed by | Purpose |
 | --------- | ----------- | ----------- | ------- |
-| `common/` | — | `ui-commands`, `agent-intents` | Shared primitives: contract version, identifiers, quantity, integer-cents money, correlation id, idempotency key, ISO-8601 timestamp, structured error |
+| `common/` | — | `ui-commands`, `agent-intents`, `commerce-api` | Shared primitives: contract version, identifiers, quantity, integer-cents money, correlation id, idempotency key, ISO-8601 timestamp, structured error |
 | `ui-commands/` | `ai-service` | `apps/web` | What the screen should do |
 | `agent-intents/` | `ai-service` | `commerce-api` | What should happen to commerce state |
 | `api-contracts/` | `commerce-api` | `apps/web`, `ai-service` | Request/response shapes for the commerce API — still empty; no producer exists yet |
+
+`commerce-api` (Phase 6) is a real runtime consumer of `common` — its error
+model (`docs/api/commerce-api.md` §5/§6) is exactly `common`'s
+`ContractError`, and its correlation handling reuses `correlationIdSchema`.
+Its dependency on `agent-intents` is a `devDependency` only so far, used by
+one test fixture that proves the validation pipeline against a real
+contract schema (`test/fixtures/validation-fixture.controller.ts`) — no
+intent is executed in production yet, and `agent-intents` becomes a runtime
+dependency only once a phase actually executes one.
 
 Both `ui-commands` and `agent-intents` wrap their schemas in an envelope
 carrying `contractVersion`, `correlationId`, and `issuedAt` (defined once in
@@ -174,7 +183,10 @@ must apply idempotently on retry.
 (`no-restricted-imports`), from importing `@contracts/agent-intents` at
 all — the same "structural beats asserted" boundary `dispatch.ts` already
 holds for `cartStore` (§4.4), now enforced for the whole package rather
-than one file.
+than one file. The same technique applies in the other direction (Phase 6,
+ADR-0013): `apps/commerce-api` is restricted from importing
+`@contracts/ui-commands` or anything under `apps/web` — it executes
+business intents, it does not render or produce UI.
 
 Authoring pipeline (ADR-0003): Zod schemas are the source of truth → JSON
 Schema is generated → Pydantic models are generated for Python. No schema is
@@ -208,7 +220,20 @@ Recorded rather than solved, because solving them is not Phase 0 work:
 3. **Idempotency is named but undesigned.** `CLAUDE.md` requires it of
    `commerce-api`; the key strategy and retry semantics are undefined. This
    matters most where the AI service retries an intent after a timeout, which
-   is exactly where a duplicate order comes from.
+   is exactly where a duplicate order comes from. Phase 6 reserves HTTP status
+   409 for a future idempotency conflict (`docs/api/commerce-api.md` §6) but
+   defines no mechanism — this gap is unchanged, not narrowed.
 4. **Authorization boundaries are named but undesigned.** The system assumes a
    single user for now, so there is no subject to authorize. The shape of this
-   changes materially once there is.
+   changes materially once there is. Phase 6 added no authentication and no
+   authorization to `commerce-api` (`CLAUDE.md`'s deferred list); any local
+   process can call it.
+5. **`X-Correlation-Id` reaches `commerce-api`'s logs but nothing consumes
+   it yet.** Phase 5's open question 3 ("does `correlationId` need to
+   survive into commerce-api's own logs?") is now answered — Phase 6's
+   `AppLogger` attaches it (and a server-generated `X-Request-Id`) to every
+   log line automatically. What is still open: how a caller's own
+   `correlationId` (carried inside an `agent-intents` envelope, per
+   `docs/api/contracts.md` §3) and the transport-level `X-Correlation-Id`
+   header relate when a request eventually carries both — no intent is
+   executed yet, so nothing has had to answer this.

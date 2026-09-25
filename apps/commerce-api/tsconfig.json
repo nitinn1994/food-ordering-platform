@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Nest's dependency injection reads design-time type metadata; both
+    // options are also read directly by unplugin-swc from this file (see
+    // vitest.config.ts, vite.config.ts) so the same two switches govern
+    // tsc's type-checking and SWC's decorator-metadata emission.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "incremental": true
+  },
+  "include": ["src/**/*", "test/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
