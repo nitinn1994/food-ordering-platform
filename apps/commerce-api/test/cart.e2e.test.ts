@@ -6,6 +6,7 @@ import { contractErrorSchema, type ContractError } from "@contracts/common";
 import { AppModule } from "../src/app.module";
 import { testConfig } from "../src/config/test-config";
 import { configureApp } from "../src/configure-app";
+import { withInMemoryPersistence } from "./support/in-memory-persistence";
 import { CartController } from "../src/modules/cart/cart.controller";
 
 // The same build/start harness as test/menu.e2e.test.ts: the real AppModule
@@ -25,9 +26,11 @@ async function buildApp(): Promise<{
   app: NestExpressApplication;
   controller: CartController;
 }> {
-  const moduleRef = await Test.createTestingModule({
-    imports: [AppModule.forRoot(testConfig())],
-  }).compile();
+  const moduleRef = await withInMemoryPersistence(
+    Test.createTestingModule({
+      imports: [AppModule.forRoot(testConfig())],
+    }),
+  ).compile();
 
   const controller = moduleRef.get(CartController);
   const app = moduleRef.createNestApplication<NestExpressApplication>({

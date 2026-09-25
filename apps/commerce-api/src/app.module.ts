@@ -1,6 +1,7 @@
 import { type DynamicModule, Module } from "@nestjs/common";
 import { ConfigModule } from "./config/config.module";
 import type { AppConfig } from "./config/env.schema";
+import { DatabaseModule } from "./database/database.module";
 import { HealthModule } from "./health/health.module";
 import { CartModule } from "./modules/cart/cart.module";
 import { MenuModule } from "./modules/menu/menu.module";
@@ -23,6 +24,11 @@ import { OrderModule } from "./modules/order/order.module";
 // is the second, and imports MenuModule itself for item validation and
 // pricing. OrderModule (Phase 9) is the third, and imports CartModule
 // itself to price and consume the cart an order is placed from.
+//
+// DatabaseModule (Phase 10) is global, like ConfigModule: the connection
+// every module's infrastructure/ adapters share, built from the same
+// validated config (docs/features/phase-10-database-persistence/plan.md
+// §15).
 @Module({})
 export class AppModule {
   static forRoot(config: AppConfig): DynamicModule {
@@ -30,6 +36,7 @@ export class AppModule {
       module: AppModule,
       imports: [
         ConfigModule.forRoot(config),
+        DatabaseModule.forRoot(config),
         HealthModule,
         MenuModule,
         CartModule,

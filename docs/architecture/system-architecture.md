@@ -19,7 +19,7 @@
 | `apps/ai-service` | Python, LangChain, LangGraph | Conversation state, tool selection, structured intent generation, natural-language explanations | Touch the database; mutate cart or order state directly |
 | `apps/commerce-api` | NestJS, TypeScript | Menu, cart, order, pricing, business validation, authorization, idempotency | Depend on conversation history as a source of truth |
 | `packages/contracts` | TypeScript (Zod) → JSON Schema → Pydantic | The three schema families below; the shared vocabulary of the system | Contain business logic, runtime behaviour, or transport code |
-| Database | TBD (simulated in early phases) | Durable commerce state | Be reachable by anything except `commerce-api` |
+| Database | PostgreSQL, accessed through Kysely (ADR-0017, Phase 10) | Durable commerce state: menu, carts, orders | Be reachable by anything except `commerce-api` |
 
 ## 2. Topology
 
@@ -203,20 +203,27 @@ Per `CLAUDE.md`'s initial scope, and not by oversight: real AI model
 integration, real voice provider, real payments, production authentication,
 Kubernetes, production infrastructure, distributed tracing, multi-region.
 
-`infrastructure/docker/` and `infrastructure/kubernetes/` exist as empty
-directories. They should stay empty until a phase explicitly scopes them, and
-any work inside them classifies as HIGH risk on the infrastructure dimension.
+`infrastructure/kubernetes/` exists as an empty directory, and
+`infrastructure/database/` is empty too. They should stay empty until a phase
+explicitly scopes them, and any work inside them classifies as HIGH risk on
+the infrastructure dimension. Phase 10 scoped `infrastructure/docker/` for
+one thing only: `compose.yaml`, a local-development PostgreSQL bound to
+127.0.0.1 (ADR-0017). It has no API container and no production settings.
 
 ## 8. Known architectural gaps
 
 Recorded rather than solved, because solving them is not Phase 0 work:
 
-1. **The database is unchosen.** Early phases simulate it (ADR-0004,
-   Proposed). The repository interface chosen there determines how painful the
-   real one is to adopt.
+1. **~~The database is unchosen.~~ Closed in Phase 10.** Early phases
+   simulated it (ADR-0004). PostgreSQL now sits behind the same repository
+   interfaces, which did not change. Placing an order consumes the cart and
+   stores the order in one transaction (ADR-0017).
 2. **No mechanical enforcement of §4.1.** The AI service is forbidden from
    reaching the database by convention only. Credential separation or network
-   policy would make it structural — appropriate later, premature now.
+   policy would make it structural — appropriate later, premature now. Phase
+   10 did not change this. Only `commerce-api` has the driver and
+   `DATABASE_URL`, and the local Compose port is bound to 127.0.0.1. There
+   is still one database role and no network policy (ADR-0017, deferred).
 3. **Idempotency is named but undesigned.** `CLAUDE.md` requires it of
    `commerce-api`; the key strategy and retry semantics are undefined. This
    matters most where the AI service retries an intent after a timeout, which

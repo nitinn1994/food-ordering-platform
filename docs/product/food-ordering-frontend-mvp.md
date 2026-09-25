@@ -517,3 +517,27 @@ changes or cancellation, order tracking, persistence across a server
 restart (orders are in-memory), more than one customer, a `PlaceOrder`
 agent intent (a product decision — whether an AI may place orders), and
 everything on the backend/AI/voice/infra list.
+
+## 16. Phase 10 additions
+
+Phase 10 is backend persistence only: PostgreSQL behind `commerce-api`
+(ADR-0017). It changes no route, no request or response shape, and nothing
+in `apps/web`. What a customer of the API now gets that it did not before:
+
+- **Carts and orders survive a server restart.** §14 and §15 listed
+  "persistence across a server restart" as out of scope for the in-memory
+  cart and orders. It is now done, for `commerce-api`.
+- **A retried order after a restart still replays** the original order,
+  because idempotency keys are stored with the order. It does not create a
+  second one.
+- **Placing an order is all-or-nothing.** If the order cannot be stored,
+  the cart is left exactly as it was. It is not emptied with nothing to show
+  for it.
+- **Customer details are now kept durably.** How long they are kept, and
+  how a customer could ask for them to be erased, is an **open product/legal
+  question** (§8), recorded in ADR-0017 rather than decided here.
+
+**Still out of scope**, unchanged from §15: switching `apps/web` to the
+Menu, Cart or Order API, payments, order status changes, order history,
+more than one customer, and everything on the AI/voice/infra list.
+

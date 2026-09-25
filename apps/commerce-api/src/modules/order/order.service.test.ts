@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { MenuItemId } from "@contracts/common";
 import { orderResponseSchema } from "@contracts/api-contracts";
+import { InMemoryTransactionRunner } from "../../common/persistence/in-memory-transaction-runner";
+import { TransactionRunner } from "../../common/persistence/transaction-runner";
 import { CartCatalog } from "../cart/domain/cart-catalog";
 import { CartOwnerResolver } from "../cart/domain/cart-owner.resolver";
 import type { CartOwnerId, CatalogItem } from "../cart/domain/cart.types";
@@ -129,6 +131,7 @@ function setup() {
     cart,
     owner,
     new SequentialOrderIds(),
+    new InMemoryTransactionRunner(),
   );
   return { service, repository, cart, owner };
 }
@@ -331,6 +334,92 @@ describe("OrderService", () => {
     });
   });
 
+  // Phase 10 (docs/features/phase-10-database-persistence/plan.md §12,
+  // AC7): the two writes run inside one TransactionRunner.run, and nothing
+  // else does. That the runner's transaction really rolls back is proven
+  // against Postgres (order-placement.db.test.ts); this proves OrderService
+  // puts exactly the right work inside it.
+  describe("transaction boundary", () => {
+    class RecordingRunner extends TransactionRunner {
+      runs = 0;
+      inside = false;
+
+      async run<T>(work: () => Promise<T>): Promise<T> {
+        this.runs += 1;
+        this.inside = true;
+        try {
+          return await work();
+        } finally {
+          this.inside = false;
+        }
+      }
+    }
+
+    function recordingSetup() {
+      const repository = new CountingOrderRepository();
+      const owner = new FakeOwnerResolver();
+      const cart = new FakeCheckoutCart(owner);
+      const runner = new RecordingRunner();
+      const service = new OrderService(repository, cart, owner, new SequentialOrderIds(), runner);
+      const seen: string[] = [];
+      const load = cart.load.bind(cart);
+      const consume = cart.consume.bind(cart);
+      const create = repository.create.bind(repository);
+      const findByKey = repository.findByIdempotencyKey.bind(repository);
+      cart.load = async () => {
+        seen.push(`load:${runner.inside}`);
+        return load();
+      };
+      cart.consume = async (version) => {
+        seen.push(`consume:${runner.inside}`);
+        return consume(version);
+      };
+      repository.create = async (order) => {
+        seen.push(`create:${runner.inside}`);
+        return create(order);
+      };
+      repository.findByIdempotencyKey = async (ownerId, key) => {
+        seen.push(`findByIdempotencyKey:${runner.inside}`);
+        return findByKey(ownerId, key);
+      };
+      return { service, runner, seen, repository };
+    }
+
+    it("consumes the cart and stores the order inside one run, and only those", async () => {
+      const { service, runner, seen } = recordingSetup();
+
+      await service.placeOrder("key-1", CUSTOMER);
+
+      expect(runner.runs).toBe(1);
+      expect(seen).toEqual([
+        "findByIdempotencyKey:false",
+        "load:false",
+        "consume:true",
+        "create:true",
+      ]);
+    });
+
+    it("propagates a failure from inside the run unchanged", async () => {
+      const { service, repository } = recordingSetup();
+      const failure = new Error("storage down");
+      repository.create = async () => {
+        throw failure;
+      };
+
+      await expect(service.placeOrder("key-1", CUSTOMER)).rejects.toBe(failure);
+    });
+
+    it("opens no transaction for a replay or a refusal", async () => {
+      const { service, runner } = recordingSetup();
+      await service.placeOrder("key-1", CUSTOMER);
+      await service.placeOrder("key-1", CUSTOMER); // replay
+      await expect(service.placeOrder("key-2", CUSTOMER)).rejects.toBeInstanceOf(
+        CartEmptyError,
+      );
+      expect(runner.runs).toBe(1);
+    });
+  });
+
   describe("getOrder (AC3)", () => {
     it("throws OrderNotFoundError for an unknown id", async () => {
       const { service } = setup();
@@ -396,6 +485,7 @@ describe("OrderService", () => {
         checkout,
         new FakeOwnerResolver("owner-a"),
         new SequentialOrderIds(),
+        new InMemoryTransactionRunner(),
       );
       return { cartService, checkout, repository, service };
     }
@@ -441,8 +531,8 @@ describe("OrderService", () => {
       const repository = new CountingOrderRepository();
       const owner = new FakeOwnerResolver("owner-a");
       const ids = new SequentialOrderIds();
-      const slow = new OrderService(repository, gated, owner, ids);
-      const fast = new OrderService(repository, ungated, owner, ids);
+      const slow = new OrderService(repository, gated, owner, ids, new InMemoryTransactionRunner());
+      const fast = new OrderService(repository, ungated, owner, ids, new InMemoryTransactionRunner());
 
       const late = slow.placeOrder("key-1", CUSTOMER);
       await fast.placeOrder("key-2", CUSTOMER);

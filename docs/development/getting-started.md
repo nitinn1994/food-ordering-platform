@@ -1,6 +1,6 @@
 # Getting Started
 
-**Last updated:** 2026-09-25 (Phase 8, sub-phase 8.5)
+**Last updated:** 2026-09-25 (Phase 10, sub-phase 10.5)
 **Status:** `apps/web`, all four of `packages/contracts/{common,ui-commands,
 agent-intents,api-contracts}`, and `apps/commerce-api` are scaffolded and
 working — Phase 1 (frontend foundation), Phase 2 (menu browsing: search, item
@@ -16,11 +16,14 @@ logging, URI versioning, and `GET /health`), Phase 7 (Menu domain: a new
 `@contracts/api-contracts` package, an in-memory `MenuRepository`, and
 `GET /v1/menu` / `GET /v1/menu/items/:itemId`), and Phase 8 (Cart domain:
 `GET /v1/cart`, `POST /v1/cart/items`, `PATCH`/`DELETE
-/v1/cart/items/:itemId`, backed by an in-memory, version-checked
-`CartRepository` and priced live from the Menu) are all complete.
-`commerce-api` implements no Order route yet, and nothing calls the Cart
-API yet — `apps/web` still uses its own local cart. `apps/ai-service` does
-not exist yet.
+/v1/cart/items/:itemId`, backed by a version-checked `CartRepository` and
+priced live from the Menu), Phase 9 (Order domain: `POST /v1/orders` and
+`GET /v1/orders/:orderId`, an immutable snapshot of the cart, idempotent by
+a required key) and Phase 10 (database persistence: PostgreSQL behind the
+existing repository interfaces, migrations, a menu seed, and one
+transaction for order placement — ADR-0017) are all complete. Nothing
+calls the Commerce API yet — `apps/web` still uses its own fixture and
+local cart. `apps/ai-service` does not exist yet.
 
 ---
 
@@ -39,7 +42,7 @@ same change. A scaffolding phase that leaves this file stale has not finished.
 
 | | |
 | --- | --- |
-| Applications | `apps/web` — Next.js, TypeScript, working. `apps/commerce-api` — NestJS, TypeScript, working (Phase 6 foundation + Phase 7 read-only Menu domain + Phase 8 Cart domain; no Order route). `apps/ai-service` — empty directory, not scaffolded. |
+| Applications | `apps/web` — Next.js, TypeScript, working. `apps/commerce-api` — NestJS, TypeScript, working (Phase 6 foundation + Phase 7 read-only Menu domain + Phase 8 Cart domain + Phase 9 Order domain + Phase 10 PostgreSQL persistence). `apps/ai-service` — empty directory, not scaffolded. |
 | Shared packages | `packages/contracts/common`, `ui-commands`, `agent-intents`, `api-contracts` — Zod schemas, all working, each with committed generated JSON Schema. `api-contracts` gained its first producer in Phase 7 (`commerce-api`'s Menu domain) and its first request schemas in Phase 8 (Cart). |
 | Dependency manifests | Root `package.json` + `pnpm-workspace.yaml` (pnpm + Turborepo, ADR-0002); `apps/web/package.json`; `apps/commerce-api/package.json`; one `package.json` per `packages/contracts/*` package. |
 | Build tooling | Turborepo (`turbo.json`), TypeScript (`tsconfig.base.json`), ESLint flat config (`eslint.config.mjs`, enforcing `apps/web`'s `agent-intents` import restriction — ADR-0012 — and `apps/commerce-api`'s `ui-commands`/`apps/web` import restriction — ADR-0013), Vitest per package. Each contracts package also has a `build` script (`scripts/emit-schema.ts`) that generates its committed JSON Schema; `packages/contracts/tools/` holds a small Node module hook those scripts use, and only they use. `apps/commerce-api`'s own `build` is `vite build` (SSR mode) — a different mechanism, since it produces a runnable service, not a JSON Schema artifact (ADR-0013). |
@@ -55,25 +58,37 @@ Verified working with:
 | Node.js | v24.19.0 | `.nvmrc`, `package.json` `engines` (`>=20.9.0`) |
 | pnpm | 12.3.4 | `package.json` `packageManager` |
 | Python | not yet installed or needed | `apps/ai-service` does not exist yet |
+| Docker (with Compose) | Docker Engine 29.7.2 (Docker Desktop), Compose v5.4.0 | not pinned — only needed for the local PostgreSQL (`db:up`), which `dev`, `start` and `test:db` require; `pnpm turbo run test` does not |
 
 ## Commands
 
 Run from the repository root unless noted. All verified passing as of
-2026-09-25 (Phase 9, sub-phase 9.5, run with `--force` so no result was a
-turbo cache replay), except `pnpm install`, last run in Phase 7 — Phases 8
-and 9 added no dependency and no workspace link.
+2026-09-25 (Phase 10, sub-phase 10.5; the four `turbo` checks were run with
+`--force`, so no result was a turbo cache replay). Phase 10 added three
+dependencies to `apps/commerce-api` (`kysely`, `pg`, `@types/pg`), installed
+with `pnpm --filter commerce-api add` — `pnpm install` itself was not re-run
+from clean.
+
+**First-time database setup** (once per machine, then after any new
+migration): `pnpm --filter commerce-api db:up`, then `db:migrate`, then
+`db:seed`. Copy `apps/commerce-api/.env.example` to `.env` first — `dev`,
+`start` and the `db:*` scripts read `DATABASE_URL` from it.
 
 | Task | Command | Status |
 | ---- | ------- | ------ |
 | Install | `pnpm install` | Verified |
 | Type check (all packages) | `pnpm turbo run typecheck` | Verified |
 | Lint (all packages) | `pnpm turbo run lint` | Verified |
-| Test (all packages) | `pnpm turbo run test` | Verified — 674 tests (43 `common` + 33 `ui-commands` + 31 `agent-intents` + 114 `api-contracts` + 174 `web` + 279 `commerce-api`), up from 503 before Phase 9. `common`, `ui-commands`, `agent-intents` and `web` are unchanged in count and outcome; the 45 pre-existing `api-contracts` tests and 177 pre-existing `commerce-api` tests are unchanged, with 69 and 102 new tests added respectively (Phase 9's `commerce-api` additions include 9 additive Cart tests). |
+| Test (all packages) | `pnpm turbo run test` | Verified — 712 tests (43 `common` + 33 `ui-commands` + 31 `agent-intents` + 114 `api-contracts` + 174 `web` + 317 `commerce-api`), up from 674 before Phase 10. Needs **no** database: `*.db.test.ts` files are excluded, and the HTTP e2e suites run on the in-memory test adapters. Every package except `commerce-api` is unchanged in count and outcome; `commerce-api` gained 38 tests (the 279 pre-existing ones still pass — some had wiring-only changes, listed in `docs/features/phase-10-database-persistence/plan.md`). |
+| Test against PostgreSQL | `pnpm --filter commerce-api test:db` | Verified — 111 tests (migrations, seed, the three Postgres repositories, the transaction runner, order placement, and a full-stack HTTP suite) against the Compose database `commerce_test`. Resets that database's schema and migrates it first; refuses any database whose name does not end in `_test`. With no database reachable it **fails** with a message naming `db:up` — it never skips. |
+| Start / stop the local database | `pnpm --filter commerce-api db:up` / `db:down` | Verified — `docker compose` with `infrastructure/docker/compose.yaml`: PostgreSQL 18, bound to 127.0.0.1:5432, databases `commerce` and `commerce_test`, data in the `commerce-pgdata` volume. `db:down` keeps the data; `docker compose -f infrastructure/docker/compose.yaml down -v` destroys it |
+| Migrate the database | `pnpm --filter commerce-api db:migrate` / `db:migrate:down` | Verified — to latest / one step down, against `DATABASE_URL`; a second run is a no-op ("Already up to date." / "Nothing to revert.") |
+| Seed the menu | `pnpm --filter commerce-api db:seed` | Verified — loads the 3 categories and 6 items of `menu.seed.ts`; idempotent, never deletes; refuses to run with `NODE_ENV=production` |
 | Build (all packages) | `pnpm turbo run build` | Verified — `/`, `/cart`, `/checkout`, `/_not-found` all prerender; each contracts package's `build` regenerates its committed `schema/*.v1.json`; `commerce-api`'s `build` produces `dist/main.js`. Each contracts package's `build` prints a `no output files found` warning from turbo (its `outputs` key covers `dist/**`, not `schema/**`) — pre-existing since Phase 5, not a Phase 7, 8 or 9 regression. |
 | Generate one contract package's JSON Schema | `pnpm --filter @contracts/<name> build` | Verified for `common`, `ui-commands`, `agent-intents`, `api-contracts` — run after any schema change, before committing |
 | Run `apps/web` in development | `pnpm --filter web dev` | Verified — serves on http://localhost:3000; `/cart` and `/checkout` also live |
-| Run `apps/commerce-api` in development | `pnpm --filter commerce-api dev` | Verified — serves on http://127.0.0.1:3001; `GET /health` → `200 {"status":"ok"}`; `GET /v1/menu` and `GET /v1/menu/items/:itemId` also live, the four `/v1/cart` routes (Phase 8), and `POST /v1/orders` / `GET /v1/orders/:orderId` (Phase 9) |
-| Run `apps/commerce-api`'s built output | `pnpm --filter commerce-api build && pnpm --filter commerce-api start` | Verified — same `/health`, `/v1/menu*`, `/v1/cart*` and `/v1/orders*` responses, from `dist/main.js` |
+| Run `apps/commerce-api` in development | `pnpm --filter commerce-api dev` | Verified — needs the database (above) and refuses to start without it; serves on http://127.0.0.1:3001; `GET /health` → `200 {"status":"ok"}`; `GET /v1/menu` and `GET /v1/menu/items/:itemId` also live, the four `/v1/cart` routes (Phase 8), and `POST /v1/orders` / `GET /v1/orders/:orderId` (Phase 9) |
+| Run `apps/commerce-api`'s built output | `pnpm --filter commerce-api build && pnpm --filter commerce-api start` | Verified — same `/health`, `/v1/menu*`, `/v1/cart*` and `/v1/orders*` responses, from `dist/main.js`; carts and orders survive a restart; with the database stopped, requests get 503 `SERVICE_UNAVAILABLE` and a fresh start exits 1 |
 
 **Not verified this phase, same gap as Phases 3–6:** interactive browser
 checks against `apps/web`. `NOT_APPLICABLE` for Phase 7 specifically — it
@@ -96,6 +111,14 @@ replay returning the same `orderId`, 409 `IDEMPOTENCY_KEY_REUSED`, 400 for a
 caller-supplied `totalCents`, 404 `ROUTE_NOT_FOUND` for the deliberately
 absent `GET /v1/orders`, and 404 `ORDER_NOT_FOUND` for the order after a
 restart — plus a check that no customer detail appeared in the server log.
+Phase 10 inverted that last check: against the built `start` output, on
+PostgreSQL, a cart and an order both survived a restart; the order was
+readable afterwards with an identical body, and a same-key replay returned
+the same `orderId`. With the database stopped under a running server, every
+route answered 503 `SERVICE_UNAVAILABLE` with a static body. A fresh start
+with the database down exited 1 with `Database unreachable at startup (code
+ECONNREFUSED).`. No log line contained the connection string or a customer
+detail.
 
 `packages/contracts/{common,ui-commands,agent-intents,api-contracts}` have
 no `dev`/`start` command — they are libraries, not runnable services.
@@ -161,8 +184,9 @@ apps/
                                context, content-type guard, body parser,
                                request logging, validation pipe, exception
                                filter, shutdown hooks)
-    src/app.module.ts         wires ConfigModule + HealthModule + MenuModule
-                               + CartModule + OrderModule; no HTTP
+    src/app.module.ts         wires ConfigModule + DatabaseModule +
+                               HealthModule + MenuModule + CartModule +
+                               OrderModule; no HTTP
                                middleware of its own
                                (see configure-app.ts)
     src/config/               env.schema.ts (Zod, fail-fast), config.module.ts
@@ -185,16 +209,32 @@ apps/
                                correlation ids; X-Request-Id always
                                server-generated, X-Correlation-Id echoed if
                                valid else generated
-    src/common/immutability/  deep-freeze.ts — the one recursive freeze both
-                               in-memory repositories (Menu, Cart, Order) apply to
-                               what they return
+    src/common/immutability/  deep-freeze.ts — the one recursive freeze every
+                               repository (in-memory and Postgres) applies to
+                               what it returns
+    src/common/persistence/   transaction-runner.ts (abstract port),
+                               in-memory-transaction-runner.ts (test adapter,
+                               no atomicity) — Phase 10
+    src/database/             Phase 10 — database-client.ts (pool, ambient
+                               transaction, boot check), database.module.ts,
+                               postgres-transaction-runner.ts,
+                               database.schema.ts (table types),
+                               persistence.errors.ts (driver error → code +
+                               constraint only; 503 when unreachable),
+                               migrations/ (0001_initial_schema.ts, index.ts),
+                               migrator.ts, menu-seed.ts, cli/ (migrate.ts,
+                               seed.ts)
     src/health/               health.module.ts, health.controller.ts (GET
                                /health, unversioned), health.service.ts
     test/                     app.e2e.test.ts, validation.e2e.test.ts,
                                menu.e2e.test.ts, cart.e2e.test.ts,
                                order.e2e.test.ts (real
                                HTTP via listen(0) +
-                               fetch, no supertest),
+                               fetch, no supertest; on the in-memory test
+                               adapters via support/in-memory-persistence.ts),
+                               persistence.e2e.db.test.ts (the same stack on
+                               PostgreSQL), db-global-setup.ts,
+                               support/test-database.ts,
                                fixtures/validation-fixture.controller.ts
                                (test-only, proves the pipeline against a
                                real @contracts/agent-intents schema)
@@ -206,7 +246,8 @@ apps/
                                menu.repository.ts (abstract MenuRepository)
       infrastructure/         menu.seed.ts (temporary copy of the web
                                fixture, plus categoryId),
-                               in-memory-menu.repository.ts
+                               in-memory-menu.repository.ts (test adapter),
+                               postgres-menu.repository.ts
     src/modules/cart/         the second domain module and the first with
                                writes (Phase 8) — cart.controller.ts,
                                cart.service.ts, cart.mapper.ts,
@@ -218,8 +259,10 @@ apps/
                                cart.invariants.ts, cart.errors.ts, and three
                                abstract ports: cart.repository.ts,
                                cart-catalog.ts, cart-owner.resolver.ts
-      infrastructure/         in-memory-cart.repository.ts (optimistic
-                               version check), menu-catalog.adapter.ts
+      infrastructure/         in-memory-cart.repository.ts (test adapter),
+                               postgres-cart.repository.ts (optimistic
+                               version check as a guarded UPDATE),
+                               menu-catalog.adapter.ts
                                (→ MenuService.findItemById),
                                single-user-cart-owner.resolver.ts
     src/modules/order/        the third domain module (Phase 9) —
@@ -231,8 +274,9 @@ apps/
                                order.errors.ts, and four abstract ports:
                                order.repository.ts, checkout-cart.ts,
                                order-owner.resolver.ts, order-id.generator.ts
-      infrastructure/         in-memory-order.repository.ts (unique id and
-                               owner+key), cart-checkout.adapter.ts
+      infrastructure/         in-memory-order.repository.ts (test adapter),
+                               postgres-order.repository.ts (unique id and
+                               owner+key as constraints), cart-checkout.adapter.ts
                                (→ CartService.prepareCheckout /
                                completeCheckout), cart-owner.adapter.ts
                                (→ CartOwnerResolver), uuid-order-id.generator.ts
@@ -263,7 +307,9 @@ packages/
                      `build` script (schema generation); not part of any
                      package's exports
 infrastructure/
-  database/  docker/  kubernetes/     empty; deliberately deferred
+  docker/         compose.yaml — local-development PostgreSQL only (Phase 10),
+                   postgres/init/01-create-test-database.sql
+  database/  kubernetes/              empty; deliberately deferred
 docs/
   architecture/  product/  api/  decisions/  development/
   api/contracts.md                         contract naming, worked examples,
@@ -279,6 +325,7 @@ docs/
   features/phase-7-menu-domain/              requirements.md, plan.md, test-plan.md
   features/phase-8-cart-domain/              requirements.md, plan.md, test-plan.md
   features/phase-9-order-domain/             requirements.md, plan.md, test-plan.md
+  features/phase-10-database-persistence/  requirements.md, plan.md, test-plan.md
 .claude/          ForgeFlow — rules, commands, agents, skills, workflows
 ```
 
@@ -316,7 +363,8 @@ replaces them — see
 Phase 1 (sub-phases 1.1–1.4), Phase 2 (sub-phases 2.1–2.4), Phase 3
 (sub-phases 3.1–3.5), Phase 4 (sub-phases 4.1–4.5), Phase 5 (sub-phases
 5.1–5.4), Phase 6 (sub-phases 6.1–6.5), Phase 7 (sub-phases 7.1–7.4), and
-Phase 8 (sub-phases 8.1–8.5) are
+Phase 8 (sub-phases 8.1–8.5), Phase 9 (sub-phases 9.1–9.5) and Phase 10
+(sub-phases 10.1–10.5) are
 all implemented: workspace foundation, the `ui-commands` contracts package
 (5 commands, unchanged since Phase 2), the menu UI with search and item
 detail, real loading/error states via an async `getMenu()` seam, a complete
@@ -341,9 +389,14 @@ behind an abstract interface, `GET /v1/menu` and
 domain module's own error into an HTTP response (ADR-0014), and now a Cart
 domain: server-resolved single-owner identity, live menu pricing, an
 in-memory repository with an optimistic version check, and the four
-`/v1/cart` routes that execute the three adopted intents (ADR-0015).
+`/v1/cart` routes that execute the three adopted intents (ADR-0015), and
+an Order domain: immutable snapshots of the priced cart, idempotent creation
+by a required key, and `POST /v1/orders` / `GET /v1/orders/:orderId`
+(ADR-0016), and now PostgreSQL persistence behind all three repository
+interfaces, with reversible migrations, an idempotent menu seed, and cart
+consumption plus order storage in one database transaction (ADR-0017).
 
-Order is the next major domain and has not been planned yet. Wiring
+Payment, authentication, and order status changes are not planned yet. Wiring
 `apps/web` to the real menu and cart instead of its own fixture and local
 cart is also still unplanned (Phase 7's OD8; Phase 8 left it out of scope).
 `apps/ai-service` remains unplanned too.

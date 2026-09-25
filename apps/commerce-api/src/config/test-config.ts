@@ -11,6 +11,12 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     PORT: 0,
     LOG_LEVEL: "error",
     LOG_FORMAT: "json",
+    // A placeholder that is never connected to: pg.Pool connects lazily, and
+    // every DB-free test that starts an app replaces DatabaseClient
+    // (test/support/in-memory-persistence.ts). The DB suite passes a real
+    // URL through `overrides` (test/support/test-database.ts).
+    DATABASE_URL: "postgres://placeholder@127.0.0.1:1/placeholder",
+    DATABASE_POOL_MAX: 10,
     ...overrides,
   });
 }

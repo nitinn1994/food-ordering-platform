@@ -1,5 +1,5 @@
 import swc from "unplugin-swc";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   // Vitest's default esbuild transform does not emit
@@ -14,6 +14,11 @@ export default defineConfig({
   test: {
     environment: "node",
     setupFiles: ["./vitest.setup.ts"],
+    // *.db.test.ts need a real Postgres and run only under
+    // vitest.db.config.ts (`pnpm --filter commerce-api test:db`), so this
+    // suite stays runnable with no database at all
+    // (docs/features/phase-10-database-persistence/plan.md §17, OD10).
+    exclude: [...configDefaults.exclude, "**/*.db.test.ts"],
     passWithNoTests: true,
   },
 });

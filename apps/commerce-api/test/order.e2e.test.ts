@@ -12,6 +12,7 @@ import { contractErrorSchema, type ContractError } from "@contracts/common";
 import { AppModule } from "../src/app.module";
 import { testConfig } from "../src/config/test-config";
 import { configureApp } from "../src/configure-app";
+import { withInMemoryPersistence } from "./support/in-memory-persistence";
 import { OrderController } from "../src/modules/order/order.controller";
 
 // The same build/start harness as test/cart.e2e.test.ts: the real AppModule
@@ -31,9 +32,11 @@ async function buildApp(): Promise<{
   app: NestExpressApplication;
   controller: OrderController;
 }> {
-  const moduleRef = await Test.createTestingModule({
-    imports: [AppModule.forRoot(testConfig())],
-  }).compile();
+  const moduleRef = await withInMemoryPersistence(
+    Test.createTestingModule({
+      imports: [AppModule.forRoot(testConfig())],
+    }),
+  ).compile();
 
   const controller = moduleRef.get(OrderController);
   const app = moduleRef.createNestApplication<NestExpressApplication>({
@@ -383,8 +386,10 @@ describe("Order API", () => {
     await expectContractError(await send(app, "GET", "/v1/orders"), 404, "ROUTE_NOT_FOUND");
   });
 
-  // AC15 (the automated half): orders are in-memory, so a new process
-  // starts with none.
+  // AC15 (the automated half): this suite runs on the in-memory test
+  // adapters (test/support/in-memory-persistence.ts), so a new process
+  // starts with none. Since Phase 10 the running API persists orders — that
+  // restart behaviour is test/persistence.e2e.db.test.ts's.
   it("does not keep orders across a restart", async () => {
     app = (await startApp()).app;
     await addToCart(app, "tiramisu", 1);

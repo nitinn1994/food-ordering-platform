@@ -34,6 +34,11 @@ export const API_ERROR_CODES = {
   ORDER_NOT_FOUND: "ORDER_NOT_FOUND",
   CART_EMPTY: "CART_EMPTY",
   IDEMPOTENCY_KEY_REUSED: "IDEMPOTENCY_KEY_REUSED",
+  // The database could not be reached (src/database/persistence.errors.ts's
+  // DatabaseUnavailableError) — 503, the status docs/api/commerce-api.md §6
+  // reserved "once there is a dependency (e.g. a database)"
+  // (docs/features/phase-10-database-persistence/plan.md §14, OD9).
+  SERVICE_UNAVAILABLE: "SERVICE_UNAVAILABLE",
   // Fallback only, for a Nest HttpException status this filter has no
   // explicit mapping for. Nothing in this phase throws one — see
   // all-exceptions.filter.ts's STATUS_TO_CODE map, which is where the real

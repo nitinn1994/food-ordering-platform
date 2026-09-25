@@ -4,10 +4,11 @@
 Cart domain (Phase 8), and an Order domain (Phase 9). `GET /health`,
 `GET /v1/menu`, `GET /v1/menu/items/:itemId`, the four `/v1/cart` routes
 (§12), and `POST /v1/orders` / `GET /v1/orders/:orderId` (§13) exist. No
-consumer calls any of them yet.
+consumer calls any of them yet. Since Phase 10 all of it is stored in
+PostgreSQL (ADR-0017) and survives a restart.
 **Related:** [`system-architecture.md`](../architecture/system-architecture.md)
 §1, §5 · [`architecture-decisions.md`](../architecture/architecture-decisions.md)
-ADR-0013, ADR-0014, ADR-0015, ADR-0016 ·
+ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017 ·
 [`docs/features/phase-6-commerce-api-foundation/`](../features/phase-6-commerce-api-foundation/),
 [`docs/features/phase-7-menu-domain/`](../features/phase-7-menu-domain/),
 [`docs/features/phase-8-cart-domain/`](../features/phase-8-cart-domain/),
@@ -111,7 +112,7 @@ schema but nothing in this service populates it yet.
 | 500 | `INTERNAL_ERROR` | Anything unexpected. The response never contains a stack trace, the original exception's message, or the request payload — the full detail is logged server-side instead, tagged with the request's id. |
 | 422 | *(in use)* | A domain-rule failure — a request that is well-formed but that the business refuses. First used by Cart (Phase 8): `MENU_ITEM_UNAVAILABLE`, `CART_ITEM_QUANTITY_LIMIT_EXCEEDED`; Order (Phase 9) adds `CART_EMPTY`. |
 | 409 | *(in use)* | A conflict. Cart (Phase 8) uses it for a concurrency conflict (`CART_CONFLICT`); Order (Phase 9) uses it for the first idempotency conflict (`IDEMPOTENCY_KEY_REUSED`), the case it was originally reserved for. |
-| 503 | *reserved* | A future readiness check, once there is a dependency (e.g. a database) to report on. |
+| 503 | `SERVICE_UNAVAILABLE` | The database could not be reached (Phase 10). Any route that reads or writes commerce state can return it. The body is static and names no host, URL or driver detail. Retry later. There is still no readiness endpoint (§9). |
 
 `INVALID_PAYLOAD` and `UNSUPPORTED_CONTRACT_VERSION` are
 `@contracts/common`'s own codes (`CONTRACT_ERROR_CODES`), reused here rather
@@ -151,8 +152,11 @@ headers, and query string are never logged, by any code path.
 { "status": "ok" }
 ```
 
-Liveness only. There is nothing to be ready for yet — no database, no
-downstream call — so there is no separate readiness endpoint.
+Liveness only. Since Phase 10 there is a dependency, PostgreSQL, but it is
+checked only at boot: the process refuses to start if the database is
+unreachable. `/health` does not query it, and a readiness endpoint remains
+deferred (ADR-0017, OD15). When the database drops out after boot,
+requests get 503 `SERVICE_UNAVAILABLE` (§6).
 
 ## 10. Worked examples
 
@@ -306,8 +310,11 @@ anything, so it is not a 201.
 - **Concurrency.** A write based on a stale read is rejected with 409
   `CART_CONFLICT`; nothing retries internally. The version is not exposed
   (no `ETag` / `If-Match`).
-- **In-memory.** Cart state lives in the process and is lost on restart
-  (ADR-0015; ADR-0004 is now `Accepted` for Cart).
+- **Persistent.** Since Phase 10 the cart is stored in PostgreSQL and
+  survives a restart (ADR-0017). The version check is a guarded
+  `UPDATE … WHERE version = N - 1`, so two concurrent writes still cannot
+  both succeed. Emptying a cart keeps its row. The retry and concurrency
+  behaviour above is unchanged.
 - **Shapes** are defined in `@contracts/api-contracts` (`cart.ts`:
   `addCartItemRequestSchema`, `updateCartItemRequestSchema`,
   `cartItemParamsSchema`, `cartResponseSchema`), with committed JSON Schema
@@ -384,8 +391,12 @@ snapshot and empties the cart. There is no payment: a new order's status is
   `orderId`). An unknown id, or another owner's order, is 404
   `ORDER_NOT_FOUND`. There is no `GET /v1/orders` list — order history is
   out of scope (404 `ROUTE_NOT_FOUND`).
-- **In-memory.** Orders live in the process and are lost on restart
-  (ADR-0016; ADR-0004 is now `Accepted` for Order).
+- **Persistent.** Since Phase 10 orders, and their idempotency keys, are
+  stored in PostgreSQL and survive a restart (ADR-0017). A same-key retry
+  after a restart **replays** the original order; it is no longer 404.
+  Consuming the cart and storing the order are one transaction: if storing
+  fails, the cart is left as it was, and the response is 500
+  `INTERNAL_ERROR`.
 - **Shapes** are defined in `@contracts/api-contracts` (`order.ts`:
   `createOrderRequestSchema`, `orderParamsSchema`, `orderResponseSchema`,
   `customerDetailsSchema`, `orderIdSchema`, `orderStatusSchema`), with

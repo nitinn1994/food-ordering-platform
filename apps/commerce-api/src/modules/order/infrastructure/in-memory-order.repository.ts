@@ -6,8 +6,11 @@ import { assertOrderInvariants } from "../domain/order.invariants";
 import { OrderRepository } from "../domain/order.repository";
 import type { Order, OrderId, OrderOwnerId } from "../domain/order.types";
 
-// The Phase 9 adapter of OrderRepository: process-local Maps, lost on
+// The in-memory adapter of OrderRepository: process-local Maps, lost on
 // restart (docs/features/phase-9-order-domain/plan.md §18, OD10; ADR-0016).
+// Since Phase 10 it is the test adapter, used by DB-free tests; the running
+// API binds PostgresOrderRepository
+// (docs/features/phase-10-database-persistence/plan.md §9, OD3).
 // Grows without bound — acceptable for local development with one owner,
 // and recorded as deferred.
 //

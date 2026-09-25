@@ -5,8 +5,11 @@ import { assertCartInvariants } from "../domain/cart.invariants";
 import { CartRepository } from "../domain/cart.repository";
 import type { Cart, CartOwnerId } from "../domain/cart.types";
 
-// The Phase 8 adapter of CartRepository: a process-local Map, lost on
+// The in-memory adapter of CartRepository: a process-local Map, lost on
 // restart (docs/features/phase-8-cart-domain/plan.md §17, OD12; ADR-0015).
+// Since Phase 10 it is the test adapter, used by DB-free tests; the running
+// API binds PostgresCartRepository
+// (docs/features/phase-10-database-persistence/plan.md §9, OD3).
 //
 // ADR-0004 names this exact risk — an in-memory store makes transactional
 // semantics look easier than they are — so this adapter enforces the same

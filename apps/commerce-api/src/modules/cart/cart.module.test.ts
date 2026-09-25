@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import { CartCatalog } from "./domain/cart-catalog";
 import { CartOwnerResolver } from "./domain/cart-owner.resolver";
 import { CartRepository } from "./domain/cart.repository";
-import { InMemoryCartRepository } from "./infrastructure/in-memory-cart.repository";
+import { testConfig } from "../../config/test-config";
+import { DatabaseModule } from "../../database/database.module";
+import { PostgresCartRepository } from "./infrastructure/postgres-cart.repository";
 import { MenuCatalogAdapter } from "./infrastructure/menu-catalog.adapter";
 import {
   SINGLE_USER_CART_OWNER_ID,
@@ -13,19 +15,23 @@ import {
 import { CartController } from "./cart.controller";
 import { CartModule } from "./cart.module";
 import { CartService } from "./cart.service";
+import { withInMemoryPersistence } from "../../../test/support/in-memory-persistence";
 
 // Constructor injection by abstract-class token, no @Inject() — the same
 // toolchain proof menu.module.test.ts gives MenuModule, here for three
 // ports at once (requirements.md AC12).
 describe("CartModule", () => {
-  it("resolves the controller, service, and each port to its Phase 8 adapter", async () => {
+  // Phase 10: storage is Postgres; the other ports keep their Phase 8
+  // adapters. Compiling does not connect (pg.Pool is lazy), so this needs no
+  // database — and no in-memory override, which would hide the binding.
+  it("resolves the controller, service, and each port to its runtime adapter", async () => {
     const moduleRef = await Test.createTestingModule({
-      imports: [CartModule],
+      imports: [DatabaseModule.forRoot(testConfig()), CartModule],
     }).compile();
 
     expect(moduleRef.get(CartController)).toBeInstanceOf(CartController);
     expect(moduleRef.get(CartService)).toBeInstanceOf(CartService);
-    expect(moduleRef.get(CartRepository)).toBeInstanceOf(InMemoryCartRepository);
+    expect(moduleRef.get(CartRepository)).toBeInstanceOf(PostgresCartRepository);
     expect(moduleRef.get(CartCatalog)).toBeInstanceOf(MenuCatalogAdapter);
     expect(moduleRef.get(CartOwnerResolver)).toBeInstanceOf(
       SingleUserCartOwnerResolver,
@@ -34,9 +40,11 @@ describe("CartModule", () => {
 
   // AC10: the bound resolver names the one fixed owner, and nothing else.
   it("resolves every request to the single fixed owner", async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [CartModule],
-    }).compile();
+    const moduleRef = await withInMemoryPersistence(
+      Test.createTestingModule({
+        imports: [CartModule],
+      }),
+    ).compile();
 
     await expect(moduleRef.get(CartOwnerResolver).resolve()).resolves.toBe(
       SINGLE_USER_CART_OWNER_ID,
@@ -44,9 +52,11 @@ describe("CartModule", () => {
   });
 
   it("adds a seeded menu item through the compiled module end to end", async () => {
-    const moduleRef = await Test.createTestingModule({
-      imports: [CartModule],
-    }).compile();
+    const moduleRef = await withInMemoryPersistence(
+      Test.createTestingModule({
+        imports: [CartModule],
+      }),
+    ).compile();
 
     const cart = await moduleRef
       .get(CartController)
@@ -69,9 +79,11 @@ describe("CartModule", () => {
     @Module({ imports: [CartModule], providers: [Consumer] })
     class ConsumerModule {}
 
-    const moduleRef = await Test.createTestingModule({
-      imports: [ConsumerModule],
-    }).compile();
+    const moduleRef = await withInMemoryPersistence(
+      Test.createTestingModule({
+        imports: [ConsumerModule],
+      }),
+    ).compile();
     const consumer = moduleRef.get(Consumer);
 
     expect(consumer.cartService).toBeInstanceOf(CartService);

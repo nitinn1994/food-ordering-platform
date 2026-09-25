@@ -92,4 +92,67 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Keeps the domain and application layers independent of the database
+    // (docs/features/phase-10-database-persistence/plan.md §27, AC14): only
+    // a module's infrastructure/ adapters may reach kysely, pg or
+    // src/database/. Services depend on ports — including TransactionRunner,
+    // which lives in src/common/persistence/, not src/database/.
+    //
+    // Flat config does not merge rule options: for the files matched here,
+    // this block's no-restricted-imports *replaces* the one above. So the
+    // two commerce-api bans above are repeated verbatim, and all four were
+    // verified to still fail lint with a temporary violating import.
+    files: [
+      "apps/commerce-api/src/modules/*/domain/**/*.ts",
+      "apps/commerce-api/src/modules/*/*.service.ts",
+      "apps/commerce-api/src/modules/*/*.controller.ts",
+      "apps/commerce-api/src/modules/*/*.mapper.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@contracts/ui-commands",
+              message:
+                "apps/commerce-api must never import ui-commands — UI " +
+                "commands are produced by ai-service and rendered only by " +
+                "apps/web (system-architecture.md §4.4, §6).",
+            },
+            {
+              name: "kysely",
+              message:
+                "Domain, service, controller and mapper code must not depend " +
+                "on the database — use a port; only infrastructure/ adapters " +
+                "touch storage (Phase 10 plan.md §9).",
+            },
+            {
+              name: "pg",
+              message:
+                "Domain, service, controller and mapper code must not depend " +
+                "on the database driver — only infrastructure/ adapters touch " +
+                "storage (Phase 10 plan.md §9).",
+            },
+          ],
+          patterns: [
+            {
+              group: ["**/web/**"],
+              message:
+                "apps/commerce-api must never import from apps/web — the " +
+                "commerce API has no dependency on the frontend.",
+            },
+            {
+              group: ["kysely/*", "pg/*", "**/database/**"],
+              message:
+                "Domain, service, controller and mapper code must not depend " +
+                "on src/database/ or a database package — use a port; only " +
+                "infrastructure/ adapters touch storage (Phase 10 plan.md §9).",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );

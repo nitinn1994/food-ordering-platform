@@ -19,6 +19,12 @@ export const envSchema = z.object({
   // "pretty" is for local development only; production and test both use
   // "json" (plan.md, Phase 6, §8 — "production is a placeholder only").
   LOG_FORMAT: z.enum(["json", "pretty"]).default("json"),
+  // Required, with no default: a missing database is a configuration error
+  // at boot, not a silently non-persistent API
+  // (docs/features/phase-10-database-persistence/plan.md §15). Never logged
+  // — EnvValidationError below names the field only.
+  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
 });
 
 export type Env = z.infer<typeof envSchema>;

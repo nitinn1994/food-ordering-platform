@@ -1,0 +1,38 @@
+# Local development database for apps/commerce-api — and nothing else
+# (docs/features/phase-10-database-persistence/plan.md §16, OD11). No API
+# container, no network topology, no production settings: production
+# infrastructure is out of scope until a phase explicitly scopes it
+# (system-architecture.md §7).
+#
+# The credentials below are development-only placeholders, not secrets. They
+# match apps/commerce-api/.env.example. The port is bound to 127.0.0.1 only,
+# so the database is not reachable from other machines.
+#
+#   pnpm --filter commerce-api db:up     start (waits for the healthcheck)
+#   pnpm --filter commerce-api db:down   stop; data is kept in the volume
+#   docker compose -f infrastructure/docker/compose.yaml down -v
+#                                        stop AND destroy all local data
+name: food-ordering-platform
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: commerce
+      POSTGRES_PASSWORD: commerce
+      POSTGRES_DB: commerce
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Postgres 18 images keep versioned data under /var/lib/postgresql.
+      - commerce-pgdata:/var/lib/postgresql
+      # Runs once, when the volume is first initialised.
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U commerce -d commerce"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+volumes:
+  commerce-pgdata:

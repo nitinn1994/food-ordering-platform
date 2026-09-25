@@ -22,7 +22,7 @@ made, and what they cost.
 | [0001](#adr-0001--monorepo-with-three-applications-and-a-shared-contracts-package) | Monorepo with three applications and a shared contracts package | Accepted |
 | [0002](#adr-0002--pnpm-workspaces--turborepo-for-the-typescript-graph) | pnpm workspaces + Turborepo for the TypeScript graph | Accepted |
 | [0003](#adr-0003--zod-as-contract-source-of-truth-pydantic-generated-for-python) | Zod as contract source of truth, Pydantic generated for Python | Accepted |
-| [0004](#adr-0004--simulate-the-database-behind-a-repository-interface) | Simulate the database behind a repository interface | Accepted (Menu, Cart, Order) |
+| [0004](#adr-0004--simulate-the-database-behind-a-repository-interface) | Simulate the database behind a repository interface | Superseded by ADR-0017 (runtime storage); in-memory adapters kept as test adapters |
 | [0005](#adr-0005--refetch-after-mutation-for-frontend-freshness) | Refetch-after-mutation for frontend freshness | Proposed |
 | [0006](#adr-0006--jest-for-typescript-pytest-for-python) | Jest for TypeScript, pytest for Python | Proposed |
 | [0007](#adr-0007--defer-voice-entirely-rather-than-stub-a-provider) | Defer voice entirely rather than stub a provider | Proposed |
@@ -35,6 +35,7 @@ made, and what they cost.
 | [0014](#adr-0014--menu-domain-in-memory-repository-a-new-api-contracts-package-and-a-shared-domain-error-base) | Menu domain: in-memory repository, a new `api-contracts` package, and a shared domain-error base | Accepted |
 | [0015](#adr-0015--cart-domain-server-resolved-identity-live-menu-pricing-in-memory-storage-with-optimistic-versioning) | Cart domain: server-resolved identity, live menu pricing, in-memory storage with optimistic versioning | Accepted |
 | [0016](#adr-0016--order-domain-snapshot-at-placement-cart-consumed-at-the-priced-version-idempotent-creation-in-memory-storage) | Order domain: snapshot at placement, cart consumed at the priced version, idempotent creation, in-memory storage | Accepted |
+| [0017](#adr-0017--postgresql-behind-the-repository-ports-kysely-migrations-and-one-transaction-for-order-placement) | PostgreSQL behind the repository ports: Kysely, migrations, and one transaction for order placement | Accepted |
 
 ---
 
@@ -144,8 +145,18 @@ Zod (authored)  →  JSON Schema (generated)  →  Pydantic (generated)
 
 ## ADR-0004 — Simulate the database behind a repository interface
 
-**Status:** Accepted for Menu (Phase 7), Cart (Phase 8) and Order
-(Phase 9) · **Date:** 2026-09-14 (updated 2026-09-25, Phases 7, 8 and 9)
+**Status:** Superseded by [ADR-0017](#adr-0017--postgresql-behind-the-repository-ports-kysely-migrations-and-one-transaction-for-order-placement)
+for runtime storage (Phase 10). Previously Accepted for Menu (Phase 7),
+Cart (Phase 8) and Order (Phase 9) · **Date:** 2026-09-14 (updated
+2026-09-25, Phases 7, 8, 9 and 10)
+
+**Phase 10:** the repository interfaces this ADR introduced are kept
+unchanged, and so are the three in-memory adapters — but only as test
+adapters (unit and service tests, and the DB-free HTTP suite). The running
+API now binds PostgreSQL adapters (ADR-0017). This ADR's stated risk
+("code written against it may assume atomicity the real database will need
+explicit work to provide") was real in exactly the one place ADR-0016
+named, and ADR-0017 is that explicit work.
 
 Phase 7 adopted this decision for the Menu domain specifically — see
 ADR-0014. Phase 8 adopted it for Cart — see ADR-0015, which also answers
@@ -1042,3 +1053,113 @@ and that there are no fees (D5).
   committed `order.v1.json` and `order-create-request.v1.json`). Every rule
   is a bound or a lookaround-free regex, so the JSON Schema says the same
   thing to a Python caller.
+
+---
+
+## ADR-0017 — PostgreSQL behind the repository ports: Kysely, migrations, and one transaction for order placement
+
+**Status:** Accepted · **Date:** 2026-09-25 (Phase 10) · **Decisions:**
+`docs/features/phase-10-database-persistence/plan.md` §33, OD1–OD16,
+approved as recommended
+
+### Context
+
+Every piece of commerce state lived in process memory (ADR-0004), and
+`system-architecture.md` §8 gap 1 recorded the database as unchosen —
+`phase-0-discovery.md` mentioned Postgres/Prisma only in passing, never as
+a decision. ADR-0016 left one hard requirement for whichever phase added a
+database: consuming the cart and storing the order are two writes, and a
+database adapter must make them one transaction. Those two writes cross
+module boundaries (Cart's repository, reached through Order's
+`CheckoutCart` port, and Order's own repository), so no single repository
+could own the transaction.
+
+### Decision
+
+1. **PostgreSQL** (OD1). The deciding requirements were a cross-aggregate
+   transaction on a single node with no extra setup, and fixed-shape,
+   integer-cents data whose invariants a schema can enforce. MongoDB was
+   evaluated; its multi-document transactions need a replica set even
+   locally, and nothing here needs a flexible document schema.
+2. **Kysely over `pg`** (OD2) — a typed query builder, not an ORM, with
+   hand-written table types (`src/database/database.schema.ts`), always-bound
+   parameters, and Kysely's `Migrator`. Drizzle, Prisma and TypeORM were
+   evaluated (no down migrations; an extra codegen step next to the Vite SSR
+   bundle; decorator entities mirroring classes into tables).
+3. **The repository ports are unchanged.** Each module's
+   `infrastructure/` gains a `Postgres*Repository` implementing the same
+   abstract class; the module binding is the only other change. The
+   in-memory adapters are kept as test adapters; there is no runtime
+   in-memory/Postgres switch (OD3).
+4. **Transactions are ambient** (OD4). A `TransactionRunner` port
+   (`src/common/persistence/`) is implemented by `PostgresTransactionRunner`
+   over `DatabaseClient`, which keeps the open Kysely transaction in
+   `AsyncLocalStorage`; repositories write through
+   `DatabaseClient.executor()`, so they join it without any port or domain
+   type carrying a handle. `OrderService.placeOrder` is the only caller,
+   around exactly two writes: consume the cart, store the order. READ
+   COMMITTED; correctness comes from the cart's version-guarded
+   `UPDATE … WHERE version = N - 1` (ADR-0015 §4) and its row lock, not from
+   isolation level.
+5. **Schema** (plan.md §5): six tables, every constraint named, bounds
+   repeating the contracts'. **No foreign key from `cart_lines.item_id` or
+   `order_lines.item_id` to the menu** (OD6): a cascade would silently
+   drop a cart line — so an order would succeed without it, which ADR-0016
+   forbids — and a restrict would invent a new rule (an item in any cart
+   could not be removed). A cleared cart keeps its row, so its version only
+   rises.
+6. **Migrations** (OD7): Kysely `Migrator`, a static list
+   (`src/database/migrations/index.ts`), `NNNN_snake_name` with `up` and
+   `down`, run only by `db:migrate` — never at boot. **Seed** (OD5): an
+   idempotent upsert of the existing `MENU_SEED` (`db:seed`), never a
+   migration, never deleting.
+7. **Errors** (OD9): a driver error keeps only its SQLSTATE and constraint
+   name (`src/database/persistence.errors.ts`) — never `detail`, which for a
+   check violation contains every column value, customer data included. An
+   unreachable database is 503 `SERVICE_UNAVAILABLE`, the status
+   `commerce-api.md` §6 had reserved; everything else is 500. A duplicate
+   order stays Phase 9's `OrderAlreadyExistsError`.
+8. **Configuration and lifecycle**: `DATABASE_URL` is required
+   (`DATABASE_POOL_MAX` optional); boot fails fast on an unreachable
+   database, naming only the error code (OD8); the pool drains on shutdown.
+9. **Local development and tests** (OD10, OD11): one Postgres service in
+   `infrastructure/docker/compose.yaml`, bound to 127.0.0.1, with a
+   separate `commerce_test` database. `pnpm turbo run test` stays
+   database-free; `pnpm --filter commerce-api test:db` runs against the real
+   database and fails — never skips — when it is unreachable.
+10. **Boundary**: ESLint forbids `kysely`, `pg` and `src/database/` in
+    `modules/*/domain/**` and in services, controllers and mappers; only
+    `infrastructure/` adapters (and the module files that bind them) touch
+    storage.
+
+### Consequences
+
+- **Order placement is atomic.** If storing the order fails, the cart's
+  consumption rolls back with it; proven against Postgres by forcing the
+  order insert to collide after the cart was consumed, and by showing that
+  test fails when the transaction is removed.
+- **State survives restarts.** Carts, orders and their idempotency keys are
+  durable: a same-key retry after a restart replays the original order
+  instead of creating a second one. Phase 9's "restart → 404" no longer
+  describes the running API.
+- **Concurrent placements from one cart version still yield one order**,
+  now under real concurrency: the loser gets 409 `CART_CONFLICT` if it
+  priced the cart before the winner consumed it, or 422 `CART_EMPTY` if
+  after (both already documented by ADR-0016).
+- **The ambient transaction is implicit.** A repository call made outside
+  `run` quietly uses the pool. Only one use case opens a transaction today;
+  a second one must use `TransactionRunner` rather than assume.
+- **Customer details are now durable personal data**, stored only in
+  `orders`, never logged, never in an error. There is **no retention or
+  erasure policy** — an open product/legal decision, recorded rather than
+  invented.
+- **Deferred:** a readiness endpoint (OD15; `GET /health` stays liveness),
+  a least-privilege role split, TLS to the database, secret management,
+  backups and point-in-time recovery, a production migration rollback
+  policy, abandoned-cart cleanup, and batched menu lookups for cart pricing
+  (one primary-key lookup per line today).
+- **§4.1 is still enforced by convention**, not mechanically
+  (`system-architecture.md` §8 gap 2): only `commerce-api` has the driver and
+  the connection string, and the Compose port is bound to localhost, but no
+  credential separation or network policy stops another component.
+

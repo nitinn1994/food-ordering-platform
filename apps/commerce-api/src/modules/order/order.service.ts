@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import type { IdempotencyKey } from "@contracts/common";
 import type { OrderResponse } from "@contracts/api-contracts";
+import { TransactionRunner } from "../../common/persistence/transaction-runner";
 import { CheckoutCart } from "./domain/checkout-cart";
 import { OrderIdGenerator } from "./domain/order-id.generator";
 import { OrderOwnerResolver } from "./domain/order-owner.resolver";
@@ -18,7 +19,9 @@ import { toOrderResponse } from "./order.mapper";
 // domain/ (docs/features/phase-9-order-domain/plan.md §20). Depends on four
 // abstract ports and nothing concrete (requirements.md AC11), so storage,
 // cart source, identity, and id minting are each a binding change in
-// OrderModule.
+// OrderModule. Phase 10 adds a fifth, TransactionRunner, for the one unit of
+// work this service owns (docs/features/phase-10-database-persistence/
+// plan.md §12, OD4).
 @Injectable()
 export class OrderService {
   constructor(
@@ -26,6 +29,7 @@ export class OrderService {
     private readonly checkoutCart: CheckoutCart,
     private readonly orderOwnerResolver: OrderOwnerResolver,
     private readonly orderIdGenerator: OrderIdGenerator,
+    private readonly transactionRunner: TransactionRunner,
   ) {}
 
   // Places an order from the owner's cart (plan.md §5):
@@ -46,12 +50,15 @@ export class OrderService {
   //
   // The cart is consumed *before* the order is stored, deliberately
   // (plan.md OD11): the other way round, a concurrent cart edit could leave
-  // an order whose cart was never consumed. The cost is that a failure in
-  // step 6 leaves the cart cleared with no order. With the in-memory
-  // repository that is reachable only through a programming error (the key
-  // was checked in step 2 and the cart version serialized the rest); it
-  // surfaces as a logged 500. A database adapter must make steps 5 and 6
-  // one transaction (ADR-0016).
+  // an order whose cart was never consumed.
+  //
+  // Steps 5 and 6 are one transaction (ADR-0016; Phase 10 plan.md §12): if
+  // storing the order fails, consuming the cart is rolled back too, so a
+  // failure can no longer leave a cleared cart with no order. Only these
+  // two writes are inside it — the lookups and the pure step 4 stay
+  // outside, keeping the transaction short. (The in-memory TransactionRunner
+  // used by DB-free tests gives no atomicity; there, a failure in step 6
+  // still leaves the cart consumed.)
   async placeOrder(
     idempotencyKey: IdempotencyKey,
     customer: CustomerDetails,
@@ -86,8 +93,10 @@ export class OrderService {
       now: new Date(),
     });
 
-    await this.checkoutCart.consume(checkout.version);
-    await this.orderRepository.create(order);
+    await this.transactionRunner.run(async () => {
+      await this.checkoutCart.consume(checkout.version);
+      await this.orderRepository.create(order);
+    });
     return toOrderResponse(order);
   }
 

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { AppModule } from "../src/app.module";
 import { testConfig } from "../src/config/test-config";
 import { configureApp } from "../src/configure-app";
+import { withInMemoryPersistence } from "./support/in-memory-persistence";
 
 function baseUrl(app: NestExpressApplication): string {
   const address = app.getHttpServer().address();
@@ -14,9 +15,11 @@ function baseUrl(app: NestExpressApplication): string {
 }
 
 async function startApp(): Promise<NestExpressApplication> {
-  const moduleRef = await Test.createTestingModule({
-    imports: [AppModule.forRoot(testConfig())],
-  }).compile();
+  const moduleRef = await withInMemoryPersistence(
+    Test.createTestingModule({
+      imports: [AppModule.forRoot(testConfig())],
+    }),
+  ).compile();
 
   const app = moduleRef.createNestApplication<NestExpressApplication>({
     bodyParser: false,
