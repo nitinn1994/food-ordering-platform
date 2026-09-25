@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:food-ordering-platform:contracts:api-contracts:order-create-request:v1",
+  "type": "object",
+  "properties": {
+    "idempotencyKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "customer": {
+      "type": "object",
+      "properties": {
+        "fullName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": "^\\S(?:.*\\S)?$"
+        },
+        "phone": {
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^\\+?[()-]*\\d(?:[\\s()-]*\\d){6,19}[()-]*$"
+        },
+        "email": {
+          "type": "string",
+          "maxLength": 254,
+          "pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+        }
+      },
+      "required": [
+        "fullName",
+        "phone"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "idempotencyKey",
+    "customer"
+  ],
+  "additionalProperties": false
+}

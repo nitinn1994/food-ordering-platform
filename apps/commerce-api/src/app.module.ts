@@ -4,6 +4,7 @@ import type { AppConfig } from "./config/env.schema";
 import { HealthModule } from "./health/health.module";
 import { CartModule } from "./modules/cart/cart.module";
 import { MenuModule } from "./modules/menu/menu.module";
+import { OrderModule } from "./modules/order/order.module";
 
 // Dynamic (`forRoot(config)`) rather than a plain `@Module`, because the
 // validated config comes from main.ts's own parseEnv() call, not from this
@@ -20,7 +21,8 @@ import { MenuModule } from "./modules/menu/menu.module";
 // MenuModule (Phase 7) is the first domain module — read-only, one per
 // phase, no umbrella "Commerce" module (ADR-0013 §8). CartModule (Phase 8)
 // is the second, and imports MenuModule itself for item validation and
-// pricing. Order still does not exist.
+// pricing. OrderModule (Phase 9) is the third, and imports CartModule
+// itself to price and consume the cart an order is placed from.
 @Module({})
 export class AppModule {
   static forRoot(config: AppConfig): DynamicModule {
@@ -31,6 +33,7 @@ export class AppModule {
         HealthModule,
         MenuModule,
         CartModule,
+        OrderModule,
       ],
     };
   }

@@ -8,6 +8,10 @@ import {
   updateCartItemRequestSchema,
 } from "../src/cart.ts";
 import { menuResponseSchema } from "../src/menu.ts";
+import {
+  createOrderRequestSchema,
+  orderResponseSchema,
+} from "../src/order.ts";
 
 // See packages/contracts/common/scripts/emit-schema.ts for the rationale —
 // this file follows the identical pattern.
@@ -45,6 +49,18 @@ export const ARTIFACTS: readonly Artifact[] = [
     file: "cart-update-item-request.v1.json",
     id: "urn:food-ordering-platform:contracts:api-contracts:cart-update-item-request:v1",
     schema: updateCartItemRequestSchema,
+  },
+  // Order: the response and the create request, for the same reason as
+  // Cart (docs/features/phase-9-order-domain/plan.md §14).
+  {
+    file: "order.v1.json",
+    id: "urn:food-ordering-platform:contracts:api-contracts:order:v1",
+    schema: orderResponseSchema,
+  },
+  {
+    file: "order-create-request.v1.json",
+    id: "urn:food-ordering-platform:contracts:api-contracts:order-create-request:v1",
+    schema: createOrderRequestSchema,
   },
 ];
 

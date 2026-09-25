@@ -59,20 +59,21 @@ Verified working with:
 ## Commands
 
 Run from the repository root unless noted. All verified passing as of
-2026-09-25 (Phase 8, sub-phase 8.5), except `pnpm install`, last run in
-Phase 7 — Phase 8 added no dependency and no workspace link.
+2026-09-25 (Phase 9, sub-phase 9.5, run with `--force` so no result was a
+turbo cache replay), except `pnpm install`, last run in Phase 7 — Phases 8
+and 9 added no dependency and no workspace link.
 
 | Task | Command | Status |
 | ---- | ------- | ------ |
 | Install | `pnpm install` | Verified |
 | Type check (all packages) | `pnpm turbo run typecheck` | Verified |
 | Lint (all packages) | `pnpm turbo run lint` | Verified |
-| Test (all packages) | `pnpm turbo run test` | Verified — 503 tests (43 `common` + 33 `ui-commands` + 31 `agent-intents` + 45 `api-contracts` + 174 `web` + 177 `commerce-api`), up from 375 before Phase 8. `common`, `ui-commands`, `agent-intents` and `web` are unchanged in count and outcome; the 19 pre-existing `api-contracts` tests and 75 pre-existing `commerce-api` tests are unchanged, with 26 and 102 new tests added respectively. |
-| Build (all packages) | `pnpm turbo run build` | Verified — `/`, `/cart`, `/checkout`, `/_not-found` all prerender; each contracts package's `build` regenerates its committed `schema/*.v1.json`; `commerce-api`'s `build` produces `dist/main.js`. Each contracts package's `build` prints a `no output files found` warning from turbo (its `outputs` key covers `dist/**`, not `schema/**`) — pre-existing since Phase 5, not a Phase 7 or Phase 8 regression. |
+| Test (all packages) | `pnpm turbo run test` | Verified — 674 tests (43 `common` + 33 `ui-commands` + 31 `agent-intents` + 114 `api-contracts` + 174 `web` + 279 `commerce-api`), up from 503 before Phase 9. `common`, `ui-commands`, `agent-intents` and `web` are unchanged in count and outcome; the 45 pre-existing `api-contracts` tests and 177 pre-existing `commerce-api` tests are unchanged, with 69 and 102 new tests added respectively (Phase 9's `commerce-api` additions include 9 additive Cart tests). |
+| Build (all packages) | `pnpm turbo run build` | Verified — `/`, `/cart`, `/checkout`, `/_not-found` all prerender; each contracts package's `build` regenerates its committed `schema/*.v1.json`; `commerce-api`'s `build` produces `dist/main.js`. Each contracts package's `build` prints a `no output files found` warning from turbo (its `outputs` key covers `dist/**`, not `schema/**`) — pre-existing since Phase 5, not a Phase 7, 8 or 9 regression. |
 | Generate one contract package's JSON Schema | `pnpm --filter @contracts/<name> build` | Verified for `common`, `ui-commands`, `agent-intents`, `api-contracts` — run after any schema change, before committing |
 | Run `apps/web` in development | `pnpm --filter web dev` | Verified — serves on http://localhost:3000; `/cart` and `/checkout` also live |
-| Run `apps/commerce-api` in development | `pnpm --filter commerce-api dev` | Verified — serves on http://127.0.0.1:3001; `GET /health` → `200 {"status":"ok"}`; `GET /v1/menu` and `GET /v1/menu/items/:itemId` also live, and the four `/v1/cart` routes (Phase 8) |
-| Run `apps/commerce-api`'s built output | `pnpm --filter commerce-api build && pnpm --filter commerce-api start` | Verified — same `/health`, `/v1/menu*` and `/v1/cart*` responses, from `dist/main.js` |
+| Run `apps/commerce-api` in development | `pnpm --filter commerce-api dev` | Verified — serves on http://127.0.0.1:3001; `GET /health` → `200 {"status":"ok"}`; `GET /v1/menu` and `GET /v1/menu/items/:itemId` also live, the four `/v1/cart` routes (Phase 8), and `POST /v1/orders` / `GET /v1/orders/:orderId` (Phase 9) |
+| Run `apps/commerce-api`'s built output | `pnpm --filter commerce-api build && pnpm --filter commerce-api start` | Verified — same `/health`, `/v1/menu*`, `/v1/cart*` and `/v1/orders*` responses, from `dist/main.js` |
 
 **Not verified this phase, same gap as Phases 3–6:** interactive browser
 checks against `apps/web`. `NOT_APPLICABLE` for Phase 7 specifically — it
@@ -88,7 +89,13 @@ malformed one) — not merely by the automated test suite. Phase 8's Cart
 routes were verified the same way, against `dev` and `start`: an empty
 cart, add, merge, absolute set, 422 `MENU_ITEM_UNAVAILABLE`, remove, 404
 `CART_ITEM_NOT_FOUND` on a repeat remove, and 404 `ROUTE_NOT_FOUND` for the
-deliberately absent `DELETE /v1/cart`.
+deliberately absent `DELETE /v1/cart`. Phase 9's Order routes were verified
+the same way, against `dev` and `start`: 422 `CART_EMPTY` on an empty cart,
+201 placing an order, an empty cart afterwards, 200 reading it back, a
+replay returning the same `orderId`, 409 `IDEMPOTENCY_KEY_REUSED`, 400 for a
+caller-supplied `totalCents`, 404 `ROUTE_NOT_FOUND` for the deliberately
+absent `GET /v1/orders`, and 404 `ORDER_NOT_FOUND` for the order after a
+restart — plus a check that no customer detail appeared in the server log.
 
 `packages/contracts/{common,ui-commands,agent-intents,api-contracts}` have
 no `dev`/`start` command — they are libraries, not runnable services.
@@ -145,7 +152,7 @@ apps/
     src/lib/money.ts         integer-cents formatting
   ai-service/     Python service — not yet scaffolded
   commerce-api/   NestJS service — scaffolded, working (Phase 6 foundation +
-                   Phase 7 read-only Menu domain; no Cart/Order route)
+                   Phase 7 read-only Menu, Phase 8 Cart, Phase 9 Order)
     src/main.ts               bootstrap: parse env, fail-fast, build logger,
                                NestFactory.create, configureApp, listen
     src/configure-app.ts      every cross-cutting HTTP concern in one place
@@ -155,7 +162,8 @@ apps/
                                request logging, validation pipe, exception
                                filter, shutdown hooks)
     src/app.module.ts         wires ConfigModule + HealthModule + MenuModule
-                               + CartModule; no HTTP middleware of its own
+                               + CartModule + OrderModule; no HTTP
+                               middleware of its own
                                (see configure-app.ts)
     src/config/               env.schema.ts (Zod, fail-fast), config.module.ts
                                (APP_CONFIG, provided by main.ts's already-
@@ -178,12 +186,13 @@ apps/
                                server-generated, X-Correlation-Id echoed if
                                valid else generated
     src/common/immutability/  deep-freeze.ts — the one recursive freeze both
-                               in-memory repositories (Menu, Cart) apply to
+                               in-memory repositories (Menu, Cart, Order) apply to
                                what they return
     src/health/               health.module.ts, health.controller.ts (GET
                                /health, unversioned), health.service.ts
     test/                     app.e2e.test.ts, validation.e2e.test.ts,
-                               menu.e2e.test.ts, cart.e2e.test.ts (real
+                               menu.e2e.test.ts, cart.e2e.test.ts,
+                               order.e2e.test.ts (real
                                HTTP via listen(0) +
                                fetch, no supertest),
                                fixtures/validation-fixture.controller.ts
@@ -213,6 +222,20 @@ apps/
                                version check), menu-catalog.adapter.ts
                                (→ MenuService.findItemById),
                                single-user-cart-owner.resolver.ts
+    src/modules/order/        the third domain module (Phase 9) —
+                               order.controller.ts, order.service.ts,
+                               order.mapper.ts, order.module.ts
+      domain/                 order.types.ts, order.create.ts (pure
+                               createOrder — snapshot + totals —
+                               and isSameOrderRequest), order.invariants.ts,
+                               order.errors.ts, and four abstract ports:
+                               order.repository.ts, checkout-cart.ts,
+                               order-owner.resolver.ts, order-id.generator.ts
+      infrastructure/         in-memory-order.repository.ts (unique id and
+                               owner+key), cart-checkout.adapter.ts
+                               (→ CartService.prepareCheckout /
+                               completeCheckout), cart-owner.adapter.ts
+                               (→ CartOwnerResolver), uuid-order-id.generator.ts
 packages/
   contracts/
     common/         scaffolded, working (Phase 5) — shared primitives, no
@@ -232,7 +255,9 @@ packages/
                      (commerce-api → everyone): menu.ts (Phase 7 —
                      menuResponseSchema / menuItemResponseSchema) and
                      cart.ts (Phase 8 — the first request schemas, plus
-                     cartResponseSchema)
+                     cartResponseSchema) and order.ts (Phase 9 —
+                     createOrderRequestSchema, orderResponseSchema,
+                     customerDetailsSchema)
     tools/          register-relative-ts.mjs, resolve-relative-ts.mjs — a
                      Node module hook used only by each package's own
                      `build` script (schema generation); not part of any
@@ -253,6 +278,7 @@ docs/
   features/phase-6-commerce-api-foundation/  requirements.md, plan.md, test-plan.md
   features/phase-7-menu-domain/              requirements.md, plan.md, test-plan.md
   features/phase-8-cart-domain/              requirements.md, plan.md, test-plan.md
+  features/phase-9-order-domain/             requirements.md, plan.md, test-plan.md
 .claude/          ForgeFlow — rules, commands, agents, skills, workflows
 ```
 

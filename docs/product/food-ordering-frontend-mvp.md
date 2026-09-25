@@ -467,3 +467,53 @@ request adds twice, because there is no idempotency key yet
 (`system-architecture.md` §8 gap 3). This does not matter while nothing
 calls the API, but it has to be resolved before a retrying caller (the AI
 service, or a flaky network path from `apps/web`) is wired in.
+
+## 15. Phase 9 additions
+
+Phase 9 adds an Order domain to `apps/commerce-api`. See
+`docs/features/phase-9-order-domain/` for the full plan and ADR-0016 for the
+decisions. Like Phases 5–8, it adds nothing to `apps/web`'s user journeys
+and reverses nothing in §4/§9/§10/§11. `apps/web`'s `/checkout` still
+builds its simulated order in `src/lib/checkout/order.ts`, unchanged, and no
+route or component in `apps/web` was touched.
+
+Its relevance here is §7 item 4 (client-side simulated order creation) and
+ADR-0011. Phase 9 is the first phase that gives it a backend replacement to
+move to. **It remains temporary and remains in use.** Nothing calls the
+Order API yet, so the simulation is still the only order the product shows.
+
+**Added, entirely inside `apps/commerce-api` and `@contracts/api-contracts`:**
+
+- `POST /v1/orders` and `GET /v1/orders/:orderId`. Placing an order turns
+  the backend cart into an immutable snapshot — each line's name, unit
+  price and quantity as they were at that moment — and empties the cart.
+  This is the backend counterpart of Phase 4's snapshot at submit time and
+  of its "placing the order clears the cart" (D6).
+- Phase 4's customer fields (D4) — full name and phone required, email
+  optional — are now enforced by the backend, with the same rules as the
+  web form. They remain the recommendation Phase 4 recorded, not a product
+  specification.
+- `totalCents` equals `subtotalCents`, as in Phase 4 (D5): no tax, fee, tip
+  or discount.
+- **An unavailable item now blocks placing an order**, on the backend only.
+  §11 recorded Phase 4's checkout as not enforcing `MenuItem.available`
+  (D12); `apps/web`'s simulation still does not.
+- **Double-submit protection on the backend.** Placing an order requires an
+  idempotency key; retrying with the same key returns the original order
+  instead of creating a second one. Phase 4's `submitting` state guards the
+  same thing in the browser.
+- The order status is `placed`, meaning the backend accepted it and **no
+  payment was taken**.
+
+**Explicitly declined, not deferred:** an order-history or order-list
+route (`GET /v1/orders`), unchanged from §11's "order history/tracking" out
+of scope.
+
+**Still out of scope**, unchanged from §4/§9/§10/§11/§12/§13/§14: switching
+`apps/web`'s `/checkout` to the Order API (which needs CORS and a frontend
+change, and is when `lib/checkout/order.ts` is deleted), delivery/pickup
+selection and address fields (Phase 4 D2/D3), payments, order status
+changes or cancellation, order tracking, persistence across a server
+restart (orders are in-memory), more than one customer, a `PlaceOrder`
+agent intent (a product decision — whether an AI may place orders), and
+everything on the backend/AI/voice/infra list.

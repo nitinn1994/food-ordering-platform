@@ -229,6 +229,14 @@ Recorded rather than solved, because solving them is not Phase 0 work:
    being an absolute set. Phase 8 does use 409, but for an optimistic
    *concurrency* conflict (`CART_CONFLICT`), not for idempotency. Nothing
    retries yet; the first retrying caller has to resolve this gap.
+   Phase 9 **narrowed** it for one operation: order creation
+   (`POST /v1/orders`) requires an `idempotencyKey`, scoped per owner and
+   stored on the order — a retry with the same key and details replays the
+   original order, and the same key with different details is 409
+   `IDEMPOTENCY_KEY_REUSED` (ADR-0016). That is where the duplicate order
+   this gap warns about came from, so that case is closed. The gap stays
+   open for everything else, including the cart add above, and the order
+   scheme is a precedent rather than a general mechanism.
 4. **Authorization boundaries are named but undesigned.** The system assumes a
    single user for now, so there is no subject to authorize. The shape of this
    changes materially once there is. Phase 6 added no authentication and no
@@ -237,7 +245,11 @@ Recorded rather than solved, because solving them is not Phase 0 work:
    server-side through a `CartOwnerResolver` port whose only adapter
    returns one fixed owner — every caller shares one cart, deliberately,
    rather than trusting an unauthenticated client-supplied id (ADR-0015).
-   Authentication replaces that one binding.
+   Authentication replaces that one binding. Phase 9's Order domain
+   uses the same binding (its owner resolver delegates to Cart's), so
+   there is still exactly one to replace; an order read by id through
+   another owner is a 404, but with one owner that is structure, not
+   access control (ADR-0016).
 5. **`X-Correlation-Id` reaches `commerce-api`'s logs but nothing consumes
    it yet.** Phase 5's open question 3 ("does `correlationId` need to
    survive into commerce-api's own logs?") is now answered — Phase 6's

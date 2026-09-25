@@ -26,3 +26,21 @@ export type {
   CartLine,
   CartResponse,
 } from "./cart";
+export {
+  orderIdSchema,
+  orderStatusSchema,
+  customerDetailsSchema,
+  createOrderRequestSchema,
+  orderParamsSchema,
+  orderLineSchema,
+  orderResponseSchema,
+} from "./order";
+export type {
+  OrderId,
+  OrderStatus,
+  CustomerDetails,
+  CreateOrderRequest,
+  OrderParams,
+  OrderLine,
+  OrderResponse,
+} from "./order";

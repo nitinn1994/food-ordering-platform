@@ -26,6 +26,14 @@ export const API_ERROR_CODES = {
   CART_ITEM_NOT_FOUND: "CART_ITEM_NOT_FOUND",
   CART_ITEM_QUANTITY_LIMIT_EXCEEDED: "CART_ITEM_QUANTITY_LIMIT_EXCEEDED",
   CART_CONFLICT: "CART_CONFLICT",
+  // The Order domain's own codes (modules/order/domain/order.errors.ts). An
+  // unavailable line at placement reuses MENU_ITEM_UNAVAILABLE, and a cart
+  // changed mid-placement reuses CART_CONFLICT, rather than minting
+  // order-specific twins (docs/features/phase-9-order-domain/plan.md §16,
+  // OD9).
+  ORDER_NOT_FOUND: "ORDER_NOT_FOUND",
+  CART_EMPTY: "CART_EMPTY",
+  IDEMPOTENCY_KEY_REUSED: "IDEMPOTENCY_KEY_REUSED",
   // Fallback only, for a Nest HttpException status this filter has no
   // explicit mapping for. Nothing in this phase throws one — see
   // all-exceptions.filter.ts's STATUS_TO_CODE map, which is where the real

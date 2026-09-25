@@ -3,7 +3,11 @@ import type { MenuItemId, Quantity } from "@contracts/common";
 import type { CartResponse } from "@contracts/api-contracts";
 import { CartCatalog } from "./domain/cart-catalog";
 import { CartOwnerResolver } from "./domain/cart-owner.resolver";
-import { MenuItemUnavailableError, UnknownMenuItemError } from "./domain/cart.errors";
+import {
+  CartVersionConflictError,
+  MenuItemUnavailableError,
+  UnknownMenuItemError,
+} from "./domain/cart.errors";
 import {
   addLine,
   clearLines,
@@ -13,8 +17,29 @@ import {
 } from "./domain/cart.operations";
 import { priceCart } from "./domain/cart.pricing";
 import { CartRepository } from "./domain/cart.repository";
-import type { Cart, CatalogItem } from "./domain/cart.types";
+import type {
+  Cart,
+  CartOwnerId,
+  CatalogItem,
+  PricedCart,
+  PricedCartLine,
+} from "./domain/cart.types";
 import { toCartResponse } from "./cart.mapper";
+
+// The owner's cart as the Order module sees it at placement — priced from
+// the catalog's current values by the same priceCart every cart response
+// uses, so an order's snapshot is exactly what GET /v1/cart would show
+// (docs/features/phase-9-order-domain/plan.md §6, §22, OD1). `version` is
+// what completeCheckout must still find. `unpricedLineCount` counts stored
+// lines priceCart left out because their item is no longer on the menu —
+// invisible in a cart response, but an order must refuse them (plan.md
+// §10).
+export interface CartCheckout {
+  readonly ownerId: CartOwnerId;
+  readonly version: number;
+  readonly lines: readonly PricedCartLine[];
+  readonly unpricedLineCount: number;
+}
 
 // The Cart domain's use cases — orchestration only; the rules live in
 // domain/ (docs/features/phase-8-cart-domain/plan.md §21). Depends on three
@@ -62,10 +87,39 @@ export class CartService {
   }
 
   // Not exposed over HTTP and not an intent (plan.md OD5; ADR-0011, Phase 5
-  // D7) — the Order phase is its first real caller.
+  // D7). The Order module does not call it: it clears through
+  // completeCheckout, which also checks the version (Phase 9 plan.md §22).
   async clearCart(): Promise<CartResponse> {
     const cart = await this.loadCart();
     return this.commit(clearLines(cart, new Date()));
+  }
+
+  // Phase 9's two additions, for the Order module only (through its
+  // CartCheckoutAdapter) — neither is an HTTP route or an intent. Together
+  // they let an order consume exactly the cart it priced: prepareCheckout
+  // reads it with its version, and completeCheckout clears it only at that
+  // version (docs/features/phase-9-order-domain/plan.md §5, §22, OD11).
+  async prepareCheckout(): Promise<CartCheckout> {
+    const cart = await this.loadCart();
+    const priced = await this.priceLines(cart);
+    return {
+      ownerId: cart.ownerId,
+      version: cart.version,
+      lines: priced.lines,
+      unpricedLineCount: cart.lines.length - priced.lines.length,
+    };
+  }
+
+  // Clears the cart if — and only if — it is still at `expectedVersion`.
+  // Otherwise throws CartVersionConflictError and changes nothing. The save
+  // is version-checked as well, so a write landing between this load and
+  // this save is also rejected.
+  async completeCheckout(expectedVersion: number): Promise<void> {
+    const cart = await this.loadCart();
+    if (cart.version !== expectedVersion) {
+      throw new CartVersionConflictError();
+    }
+    await this.cartRepository.save(clearLines(cart, new Date()));
   }
 
   // Unknown → 404 MENU_ITEM_NOT_FOUND; known but unavailable → 422
@@ -101,6 +155,10 @@ export class CartService {
   // response (plan.md §10, OD4). At most one lookup per line; a cart holds
   // at most one line per menu item.
   private async price(cart: Cart): Promise<CartResponse> {
+    return toCartResponse(await this.priceLines(cart));
+  }
+
+  private async priceLines(cart: Cart): Promise<PricedCart> {
     const entries = await Promise.all(
       cart.lines.map(
         async (line) =>
@@ -113,6 +171,6 @@ export class CartService {
         catalog.set(itemId, item);
       }
     }
-    return toCartResponse(priceCart(cart.lines, catalog));
+    return priceCart(cart.lines, catalog);
   }
 }

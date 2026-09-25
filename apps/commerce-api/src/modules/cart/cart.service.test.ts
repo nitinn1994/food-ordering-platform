@@ -286,4 +286,122 @@ describe("CartService", () => {
       );
     });
   });
+
+  // Phase 9 additions (docs/features/phase-9-order-domain/plan.md §22).
+  describe("prepareCheckout", () => {
+    it("returns the priced lines, the owner, and the version to consume at", async () => {
+      const { service } = setup();
+      await service.addItem("tiramisu", 2);
+      await service.addItem("garlic-bread", 1);
+
+      await expect(service.prepareCheckout()).resolves.toEqual({
+        ownerId: "owner-a",
+        version: 2,
+        lines: [
+          {
+            itemId: "tiramisu",
+            name: "Tiramisu",
+            unitPriceCents: 750,
+            quantity: 2,
+            lineSubtotalCents: 1500,
+            available: true,
+          },
+          {
+            itemId: "garlic-bread",
+            name: "Garlic Bread",
+            unitPriceCents: 595,
+            quantity: 1,
+            lineSubtotalCents: 595,
+            available: true,
+          },
+        ],
+        unpricedLineCount: 0,
+      });
+    });
+
+    it("returns an empty snapshot at version 0 for an owner with nothing saved", async () => {
+      const { service } = setup();
+
+      await expect(service.prepareCheckout()).resolves.toEqual({
+        ownerId: "owner-a",
+        version: 0,
+        lines: [],
+        unpricedLineCount: 0,
+      });
+    });
+
+    it("prices from the catalog's current values", async () => {
+      const { service, catalog } = setup();
+      await service.addItem("tiramisu", 2);
+      catalog.items.set("tiramisu", { ...ITEMS.tiramisu!, priceCents: 800 });
+
+      const checkout = await service.prepareCheckout();
+
+      expect(checkout.lines[0]?.unitPriceCents).toBe(800);
+      expect(checkout.lines[0]?.lineSubtotalCents).toBe(1600);
+    });
+
+    it("flags an unavailable line rather than dropping it", async () => {
+      const { service, catalog } = setup();
+      await service.addItem("tiramisu", 1);
+      catalog.items.set("tiramisu", { ...ITEMS.tiramisu!, available: false });
+
+      const checkout = await service.prepareCheckout();
+
+      expect(checkout.lines[0]?.available).toBe(false);
+      expect(checkout.unpricedLineCount).toBe(0);
+    });
+
+    it("counts a stored line whose item left the menu, which the priced view drops", async () => {
+      const { service, catalog } = setup();
+      await service.addItem("tiramisu", 1);
+      await service.addItem("garlic-bread", 1);
+      catalog.items.delete("garlic-bread");
+
+      const checkout = await service.prepareCheckout();
+
+      expect(checkout.lines.map((line) => line.itemId)).toEqual(["tiramisu"]);
+      expect(checkout.unpricedLineCount).toBe(1);
+    });
+  });
+
+  describe("completeCheckout", () => {
+    it("clears the cart when it is still at the expected version", async () => {
+      const { service } = setup();
+      await service.addItem("tiramisu", 2);
+      const { version } = await service.prepareCheckout();
+
+      await service.completeCheckout(version);
+
+      expect((await service.getCart()).items).toEqual([]);
+      expect((await service.prepareCheckout()).version).toBe(version + 1);
+    });
+
+    it("rejects a stale version and leaves the cart unchanged", async () => {
+      const { service } = setup();
+      await service.addItem("tiramisu", 2);
+      const { version } = await service.prepareCheckout();
+      await service.addItem("garlic-bread", 1);
+
+      await expect(service.completeCheckout(version)).rejects.toBeInstanceOf(
+        CartVersionConflictError,
+      );
+      expect((await service.getCart()).items.map((line) => line.itemId)).toEqual([
+        "tiramisu",
+        "garlic-bread",
+      ]);
+    });
+
+    it("lets only one of two completions at the same version succeed", async () => {
+      const { service } = setup();
+      await service.addItem("tiramisu", 2);
+      const { version } = await service.prepareCheckout();
+
+      await service.completeCheckout(version);
+
+      await expect(service.completeCheckout(version)).rejects.toBeInstanceOf(
+        CartVersionConflictError,
+      );
+    });
+  });
 });

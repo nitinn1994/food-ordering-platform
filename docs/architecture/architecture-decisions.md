@@ -22,7 +22,7 @@ made, and what they cost.
 | [0001](#adr-0001--monorepo-with-three-applications-and-a-shared-contracts-package) | Monorepo with three applications and a shared contracts package | Accepted |
 | [0002](#adr-0002--pnpm-workspaces--turborepo-for-the-typescript-graph) | pnpm workspaces + Turborepo for the TypeScript graph | Accepted |
 | [0003](#adr-0003--zod-as-contract-source-of-truth-pydantic-generated-for-python) | Zod as contract source of truth, Pydantic generated for Python | Accepted |
-| [0004](#adr-0004--simulate-the-database-behind-a-repository-interface) | Simulate the database behind a repository interface | Accepted for Menu and Cart; Proposed for Order |
+| [0004](#adr-0004--simulate-the-database-behind-a-repository-interface) | Simulate the database behind a repository interface | Accepted (Menu, Cart, Order) |
 | [0005](#adr-0005--refetch-after-mutation-for-frontend-freshness) | Refetch-after-mutation for frontend freshness | Proposed |
 | [0006](#adr-0006--jest-for-typescript-pytest-for-python) | Jest for TypeScript, pytest for Python | Proposed |
 | [0007](#adr-0007--defer-voice-entirely-rather-than-stub-a-provider) | Defer voice entirely rather than stub a provider | Proposed |
@@ -34,6 +34,7 @@ made, and what they cost.
 | [0013](#adr-0013--nestjs-commerce-api-foundation-toolchain-validation-error-model-and-boundary) | NestJS commerce-api foundation: toolchain, validation, error model, and boundary | Accepted |
 | [0014](#adr-0014--menu-domain-in-memory-repository-a-new-api-contracts-package-and-a-shared-domain-error-base) | Menu domain: in-memory repository, a new `api-contracts` package, and a shared domain-error base | Accepted |
 | [0015](#adr-0015--cart-domain-server-resolved-identity-live-menu-pricing-in-memory-storage-with-optimistic-versioning) | Cart domain: server-resolved identity, live menu pricing, in-memory storage with optimistic versioning | Accepted |
+| [0016](#adr-0016--order-domain-snapshot-at-placement-cart-consumed-at-the-priced-version-idempotent-creation-in-memory-storage) | Order domain: snapshot at placement, cart consumed at the priced version, idempotent creation, in-memory storage | Accepted |
 
 ---
 
@@ -143,15 +144,18 @@ Zod (authored)  →  JSON Schema (generated)  →  Pydantic (generated)
 
 ## ADR-0004 — Simulate the database behind a repository interface
 
-**Status:** Accepted for Menu (Phase 7) and Cart (Phase 8); still Proposed
-for Order · **Date:** 2026-09-14 (updated 2026-09-25, Phases 7 and 8)
+**Status:** Accepted for Menu (Phase 7), Cart (Phase 8) and Order
+(Phase 9) · **Date:** 2026-09-14 (updated 2026-09-25, Phases 7, 8 and 9)
 
 Phase 7 adopted this decision for the Menu domain specifically — see
 ADR-0014. Phase 8 adopted it for Cart — see ADR-0015, which also answers
 this ADR's stated risk (below) for a domain that writes: the repository
 port itself carries an optimistic version check, so the in-memory adapter
-cannot assume an atomicity a database would not give it for free. Order
-still decides its own storage; this ADR remains `Proposed` for it.
+cannot assume an atomicity a database would not give it for free. Phase 9
+adopted it for Order — see ADR-0016, which records the one place the
+in-memory adapters do *not* give a database's guarantee for free:
+consuming a cart and storing the order it produced are two writes, and a
+database adapter must make them one transaction.
 
 ### Context
 
@@ -509,6 +513,12 @@ than decided silently.
   sub-phase 4.2. Automated tests (174, up from 100 before Phase 4) and
   static server-rendered HTML checks via `curl` stand in, and are not
   equivalent to a live browser session.
+- **Update (Phase 9):** `commerce-api` now owns order creation
+  (`POST /v1/orders`, ADR-0016). The violation this ADR records is **not
+  yet closed**: `apps/web` is not wired to it, so `lib/checkout/order.ts`
+  is still the order the product actually shows. It is deleted when the
+  integration phase switches `/checkout` to the API — unchanged from the
+  consequence above.
 
 ---
 
@@ -938,3 +948,97 @@ with no `cartId` — D13) and declined `ClearCart` as a user-facing feature
   committed JSON Schema artifacts including the two request bodies, for a
   future Python caller). A test proves each adopted intent projects onto
   them field-for-field, sharing the same `@contracts/common` validators.
+
+---
+
+## ADR-0016 — Order domain: snapshot at placement, cart consumed at the priced version, idempotent creation, in-memory storage
+
+**Status:** Accepted · **Date:** 2026-09-25 (Phase 9) · **Decisions:**
+`docs/features/phase-9-order-domain/plan.md` §31, OD1–OD13, approved as
+recommended
+
+### Context
+
+Order is `commerce-api`'s third domain. ADR-0015 left it three things:
+snapshot unit prices at placement, refuse an order with an unavailable
+line, and use cart clearing as the internal mechanism of a placed order
+(ADR-0011, Phase 5 D7). Order creation is also the first place a retry
+produces real harm — a duplicate order — which is the case
+`system-architecture.md` §8 gap 3 names. Phase 4 had already decided the
+customer fields (D4), that there is no delivery/pickup or address (D2, D3),
+and that there are no fees (D5).
+
+### Decision
+
+1. **An order is an immutable snapshot of the priced cart.** Each line
+   copies `name`, `unitPriceCents`, `quantity` and `lineSubtotalCents` from
+   Cart's own `priceCart` output at placement; Order never re-prices and
+   never reads Menu. `totalCents` equals `subtotalCents` but is its own
+   field, because it is what a payment will charge. Status is `placed`
+   only; there are no transitions, no delivery information, no fees.
+2. **Order reads and consumes the cart through its own port.**
+   `CheckoutCart` (Order-owned) is answered by `CartCheckoutAdapter`, which
+   calls two additive `CartService` methods: `prepareCheckout` (the priced
+   cart, its version, and a count of stored lines whose item left the menu)
+   and `completeCheckout(expectedVersion)` (clears only at that version).
+   The order owner comes from Cart's exported `CartOwnerResolver` — one
+   identity binding for both domains.
+3. **The cart is consumed before the order is stored.** The version check
+   on consumption serializes concurrent placements (same or different
+   keys): only one can consume a given cart version, and a cart edited
+   after pricing is a 409 `CART_CONFLICT` with nothing ordered. The
+   opposite order could leave an order whose cart was never consumed.
+4. **Creation is idempotent, per owner.** `idempotencyKey` is required in
+   the body (`@contracts/common` `idempotencyKeySchema`), scoped by (owner,
+   key), and stored on the order — no separate key store. The same key with
+   the same customer details returns the original order (same 201 and
+   body, cart untouched); the same key with different details is a 409
+   `IDEMPOTENCY_KEY_REUSED`. The repository also enforces uniqueness of id
+   and (owner, key).
+5. **Storage is in-memory** (`InMemoryOrderRepository`), insert-only, with
+   owner-scoped reads. Orders are lost on restart. Ids are random UUIDs
+   from an `OrderIdGenerator` port.
+6. **Routes:** `POST /v1/orders` and `GET /v1/orders/:orderId` only. No
+   list (history is out of scope). Another owner's order is a 404.
+
+### Consequences
+
+- **A database adapter must make cart consumption and order storage one
+  transaction.** In memory they are two writes; if storing the order
+  failed after the cart was consumed, the cart would be cleared with no
+  order. That is reachable today only through a programming error, and
+  surfaces as a logged 500 — but a database can fail between two writes,
+  and the in-memory adapters must not be taken as proof that it cannot.
+- **Idempotency is designed for order creation only.**
+  `system-architecture.md` §8 gap 3 stays open for everything else — in
+  particular `POST /v1/cart/items` still double-counts on a retry. The
+  order key scheme is a precedent, not a general mechanism. Keys are
+  retained for the order's lifetime (until restart).
+- **A retry during an in-flight placement** with the same key can see 409
+  `CART_CONFLICT` or 422 `CART_EMPTY` before the first attempt has stored
+  its order; retrying again replays it. This is documented, not
+  special-cased.
+- **A line that is unavailable, or no longer on the menu at all, blocks
+  placement** with 422 `MENU_ITEM_UNAVAILABLE`. It is never silently left
+  out of the order — `priceCart` drops a gone item from a cart response, so
+  Order counts those lines separately. Neither case is reachable over HTTP
+  while the menu seed is static.
+- **Customer details are personal data.** They are stored only in memory,
+  returned only on the owner's order routes, never logged (request logging
+  records method, path, status and duration only), and never echoed in an
+  error. Phase 4 D4's field rules are now a contract, but remain an
+  inherited recommendation rather than a product specification.
+- **Adding order states is a contract change** owned by the phase that
+  needs them. The Payment phase decides whether a new order starts as
+  `awaiting_payment` rather than `placed`.
+- **Owner-scoped 404s and random ids are not access control.** There is
+  still one owner and no authentication (`system-architecture.md` §8 gap
+  4); the authentication phase changes the one `CartOwnerResolver` binding
+  and both domains follow.
+- **No `PlaceOrder` intent** is added. What blocked it in Phase 5 (D2 —
+  customer fields and an idempotency design) now exists; whether an AI may
+  place orders is a product decision (`docs/api/contracts.md`).
+- **Wire shapes live in `@contracts/api-contracts`** (`order.ts`, with
+  committed `order.v1.json` and `order-create-request.v1.json`). Every rule
+  is a bound or a lookaround-free regex, so the JSON Schema says the same
+  thing to a Python caller.

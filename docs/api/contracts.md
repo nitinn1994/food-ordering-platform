@@ -8,16 +8,21 @@ its first producer, `commerce-api`'s Menu domain (Phase 7): `menu.ts`'s
 `cart.ts`: the first *request* schemas (`addCartItemRequestSchema`,
 `updateCartItemRequestSchema`, `cartItemParamsSchema`) and
 `cartResponseSchema`, consumed by `apps/commerce-api/src/modules/cart`.
+Phase 9 added a third, `order.ts` (`createOrderRequestSchema`,
+`orderParamsSchema`, `orderResponseSchema`, with `customerDetailsSchema`,
+`orderIdSchema` and `orderStatusSchema`), consumed by
+`apps/commerce-api/src/modules/order`.
 This document's own scope is still the two intent/command vocabularies
 below (§1–§9); `api-contracts`' schemas are documented in
-[`docs/api/commerce-api.md`](./commerce-api.md) §11 and §12 instead, next to
-the routes that use them.
+[`docs/api/commerce-api.md`](./commerce-api.md) §11, §12 and §13 instead,
+next to the routes that use them.
 **Related:** [`system-architecture.md`](../architecture/system-architecture.md) §6 ·
 [`architecture-decisions.md`](../architecture/architecture-decisions.md)
-ADR-0003, ADR-0012, ADR-0014, ADR-0015 ·
+ADR-0003, ADR-0012, ADR-0014, ADR-0015, ADR-0016 ·
 [`docs/features/phase-5-contract-foundation/`](../features/phase-5-contract-foundation/),
 [`docs/features/phase-7-menu-domain/`](../features/phase-7-menu-domain/),
-[`docs/features/phase-8-cart-domain/`](../features/phase-8-cart-domain/)
+[`docs/features/phase-8-cart-domain/`](../features/phase-8-cart-domain/),
+[`docs/features/phase-9-order-domain/`](../features/phase-9-order-domain/)
 
 This document is a working reference for the contract layer: how to name a
 new field, what a valid message actually looks like on the wire, and which
@@ -222,8 +227,8 @@ rediscovered from scratch or silently smuggled in as "obviously fine."
 
 | Candidate | Kind | Why not now | Revisit when |
 | --- | --- | --- | --- |
-| `PlaceOrder` / `CreateOrder` | Business intent | Needs customer fields Phase 4 admittedly invented with no product basis, and an idempotency design `system-architecture.md` §8 still calls undesigned | `commerce-api` is planned and idempotency semantics are designed |
-| `ClearCart` | Business intent | ADR-0011 makes `CLEAR_CART` the internal mechanism of a placed order only, explicitly not a user-facing feature. Re-examined in Phase 8 and still declined: `commerce-api` has an internal `CartService.clearCart` for the Order phase, with no route (ADR-0015) | A real "empty my cart" feature is proposed as its own product decision |
+| `PlaceOrder` / `CreateOrder` | Business intent | Needed customer fields and an idempotency design. **Both now exist (Phase 9):** `POST /v1/orders` takes `customerDetailsSchema` (Phase 4 D4's rules, still an inherited recommendation) and a required, owner-scoped `idempotencyKey` (ADR-0016). Still not adopted: whether an AI may place an order on a user's behalf is a product decision, not a contract one | That product decision is made; the intent would then project onto `POST /v1/orders` the way the cart intents project onto the Cart routes |
+| `ClearCart` | Business intent | ADR-0011 makes `CLEAR_CART` the internal mechanism of a placed order only, explicitly not a user-facing feature. Re-examined in Phase 8 and still declined: `commerce-api` has an internal `CartService.clearCart`, with no route (ADR-0015). Since Phase 9 the cart is emptied by placing an order (ADR-0016) | A real "empty my cart" feature is proposed as its own product decision |
 | `OpenCheckout` | UI command | Reverses `food-ordering-frontend-mvp.md` §11's decision that `/checkout` is reachable only from a non-empty `/cart` | That routing decision is revisited on its own terms |
 | `ShowOrderConfirmation` | UI command | **Rejected outright, not deferred.** The confirmation is reachable only by having placed an order; a command that renders it lets an agent show a user an order that never happened | Not expected to be revisited — this is a standing rule, not a gap |
 | `ApplyPromotion` | Business intent | Named only as an example in `system-architecture.md` §4.4; no promotion concept exists anywhere in the product | A promotions feature is actually proposed |

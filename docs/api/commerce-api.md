@@ -1,21 +1,23 @@
 # Commerce API
 
-**Status:** Foundation (Phase 6), a read-only Menu domain (Phase 7), and a
-Cart domain (Phase 8). `GET /health`, `GET /v1/menu`,
-`GET /v1/menu/items/:itemId`, and the four `/v1/cart` routes (§12) exist.
-Order routes do not. No consumer calls any of them yet.
+**Status:** Foundation (Phase 6), a read-only Menu domain (Phase 7), a
+Cart domain (Phase 8), and an Order domain (Phase 9). `GET /health`,
+`GET /v1/menu`, `GET /v1/menu/items/:itemId`, the four `/v1/cart` routes
+(§12), and `POST /v1/orders` / `GET /v1/orders/:orderId` (§13) exist. No
+consumer calls any of them yet.
 **Related:** [`system-architecture.md`](../architecture/system-architecture.md)
 §1, §5 · [`architecture-decisions.md`](../architecture/architecture-decisions.md)
-ADR-0013, ADR-0014, ADR-0015 ·
+ADR-0013, ADR-0014, ADR-0015, ADR-0016 ·
 [`docs/features/phase-6-commerce-api-foundation/`](../features/phase-6-commerce-api-foundation/),
 [`docs/features/phase-7-menu-domain/`](../features/phase-7-menu-domain/),
-[`docs/features/phase-8-cart-domain/`](../features/phase-8-cart-domain/)
+[`docs/features/phase-8-cart-domain/`](../features/phase-8-cart-domain/),
+[`docs/features/phase-9-order-domain/`](../features/phase-9-order-domain/)
 · [`docs/api/contracts.md`](./contracts.md)
 
 This document is a working reference for `apps/commerce-api`'s HTTP surface:
 what a request and response actually look like on the wire, what every error
 code means, and which conventions a future Cart or Order route must follow
-rather than invent — Menu (§11) and Cart (§12) are the domains that follow them so far.
+rather than invent — Menu (§11), Cart (§12) and Order (§13) are the domains that follow them so far.
 Every behaviour described below is exercised by a real test
 (`src/common/**/*.test.ts`, `src/modules/**/*.test.ts`, `test/*.e2e.test.ts`)
 — this file explains why the tests assert what they do, not a separate claim
@@ -100,12 +102,15 @@ schema but nothing in this service populates it yet.
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | The request has a body but its `Content-Type` is not `application/json`. |
 | 404 | `MENU_ITEM_NOT_FOUND` | A well-formed `itemId` names no item (Phase 7) — distinct from `ROUTE_NOT_FOUND`, which means no route matched at all. Also returned when a cart add or set-quantity names an item that is not on the menu (Phase 8). |
 | 404 | `CART_ITEM_NOT_FOUND` | A cart set-quantity or remove names an item that has no line in the cart (Phase 8). Never an upsert, never a silent no-op. |
-| 422 | `MENU_ITEM_UNAVAILABLE` | A cart add or set-quantity names an item whose `available` is `false` (Phase 8). |
+| 422 | `MENU_ITEM_UNAVAILABLE` | A cart add or set-quantity names an item whose `available` is `false` (Phase 8). Also returned by `POST /v1/orders` when a cart line is unavailable or no longer on the menu (Phase 9). |
 | 422 | `CART_ITEM_QUANTITY_LIMIT_EXCEEDED` | Adding to an existing line would take it above 99 (Phase 8). Rejected, not clamped; the cart is unchanged. |
-| 409 | `CART_CONFLICT` | Another write changed the cart between this request's read and its save (optimistic version check, Phase 8). Re-read and retry. |
+| 409 | `CART_CONFLICT` | Another write changed the cart between this request's read and its save (optimistic version check, Phase 8). Re-read and retry. Also returned by `POST /v1/orders` when the cart changed between being priced and being consumed (Phase 9) — nothing was ordered. |
+| 404 | `ORDER_NOT_FOUND` | A well-formed `orderId` names no order of the caller's (Phase 9). Another owner's order is indistinguishable from a missing one. |
+| 422 | `CART_EMPTY` | `POST /v1/orders` with an empty cart (Phase 9). |
+| 409 | `IDEMPOTENCY_KEY_REUSED` | `POST /v1/orders` with an `idempotencyKey` this owner already used for an order with different customer details (Phase 9). Nothing changes. |
 | 500 | `INTERNAL_ERROR` | Anything unexpected. The response never contains a stack trace, the original exception's message, or the request payload — the full detail is logged server-side instead, tagged with the request's id. |
-| 422 | *(in use)* | A domain-rule failure — a request that is well-formed but that the business refuses. First used by Cart (Phase 8): `MENU_ITEM_UNAVAILABLE`, `CART_ITEM_QUANTITY_LIMIT_EXCEEDED`. |
-| 409 | *(in use)* | A conflict. First used by Cart (Phase 8) for a concurrency conflict (`CART_CONFLICT`); still also reserved for a future idempotency conflict — `system-architecture.md` §8 still calls idempotency undesigned. |
+| 422 | *(in use)* | A domain-rule failure — a request that is well-formed but that the business refuses. First used by Cart (Phase 8): `MENU_ITEM_UNAVAILABLE`, `CART_ITEM_QUANTITY_LIMIT_EXCEEDED`; Order (Phase 9) adds `CART_EMPTY`. |
+| 409 | *(in use)* | A conflict. Cart (Phase 8) uses it for a concurrency conflict (`CART_CONFLICT`); Order (Phase 9) uses it for the first idempotency conflict (`IDEMPOTENCY_KEY_REUSED`), the case it was originally reserved for. |
 | 503 | *reserved* | A future readiness check, once there is a dependency (e.g. a database) to report on. |
 
 `INVALID_PAYLOAD` and `UNSUPPORTED_CONTRACT_VERSION` are
@@ -292,8 +297,8 @@ anything, so it is not a 201.
   future Order domain at placement, not by the cart.
 - **No `DELETE /v1/cart`.** Clearing a cart is the internal mechanism of a
   placed order, not a user-facing feature (ADR-0011, Phase 5 D7).
-  `CartService.clearCart` exists for the Order phase to call; the route
-  returns 404 `ROUTE_NOT_FOUND`.
+  The route returns 404 `ROUTE_NOT_FOUND`. A placed order (§13) is what
+  empties the cart.
 - **Retries.** A retried `PATCH` is harmless (it is an absolute set). A retried
   `DELETE` returns 404 `CART_ITEM_NOT_FOUND`, which a caller may treat as
   "already removed". A retried `POST` **double-counts**: there is no
@@ -307,15 +312,93 @@ anything, so it is not a 201.
   `addCartItemRequestSchema`, `updateCartItemRequestSchema`,
   `cartItemParamsSchema`, `cartResponseSchema`), with committed JSON Schema
   for the response and both request bodies.
+- **Phase 9 note:** the Order domain consumes the cart through two
+  additive `CartService` methods (`prepareCheckout`, `completeCheckout`), not
+  through `clearCart` and not through any HTTP route — see §13.
 
-## 13. What this document does not cover
+## 13. Orders (Phase 9)
 
-- **Any Order route**, which does not exist yet. §11 and §12 cover the two
-  domains that do.
+Placing an order turns the caller's server-side cart into an immutable
+snapshot and empties the cart. There is no payment: a new order's status is
+`placed`, meaning commerce-api accepted it and nothing was charged
+(ADR-0016).
+
+| Method | Route | Body | Success |
+| --- | --- | --- | --- |
+| `POST` | `/v1/orders` | `{ "idempotencyKey", "customer": { "fullName", "phone", "email"? } }` | 201 `OrderResponse` |
+| `GET` | `/v1/orders/:orderId` | — | 200 `OrderResponse` |
+
+```jsonc
+// POST /v1/orders → 201 (a replay returns this same body, also 201);
+// GET /v1/orders/:orderId → 200, the same shape.
+{
+  "orderId": "9d3a5a7b-3458-41c1-8585-871e24db8cfd",
+  "status": "placed",
+  "placedAt": "2026-09-25T14:06:15.712Z",
+  "customer": { "fullName": "Ada Lovelace", "phone": "5551234" },
+  "items": [
+    {
+      "itemId": "tiramisu",
+      "name": "Tiramisu",
+      "unitPriceCents": 750,
+      "quantity": 2,
+      "lineSubtotalCents": 1500
+    }
+  ],
+  "itemCount": 2,
+  "subtotalCents": 1500,
+  "totalCents": 1500
+}
+```
+
+- **The request carries only a key and customer details.** Items, prices,
+  totals, status, and any cart, owner or order id are the server's; any of
+  them in the body is a 400 (strict schema). The order is built from the
+  caller's cart, resolved server-side exactly as for §12.
+- **Customer details** (Phase 4 D4's rules): `fullName` 1–100 characters
+  with no leading or trailing whitespace; `phone` up to 32 characters, an
+  optional leading `+`, then 7–20 digits separated by spaces, `-`, `(` or
+  `)`; `email` optional — omit it rather than sending `""`. The caller
+  trims; the server rejects rather than normalizes. These are personal
+  data: never logged, never echoed in an error — a 400 names the field
+  (e.g. `customer.phone`), never the value.
+- **Snapshot.** Each line's `name`, `unitPriceCents` and `quantity` are the
+  values the cart showed at placement, and never change afterwards,
+  whatever later happens to the menu. `totalCents` equals `subtotalCents`
+  (no tax, fee, tip or discount) but is its own field, because it is what
+  a future payment charges.
+- **Refusals** (nothing is ordered and the cart is unchanged): an empty cart
+  → 422 `CART_EMPTY`; a line whose item is unavailable or no longer on the
+  menu → 422 `MENU_ITEM_UNAVAILABLE`; a cart changed between being priced
+  and being consumed → 409 `CART_CONFLICT`.
+- **Idempotency.** `idempotencyKey` (1–128 characters) is required and
+  scoped per owner. Sending the same key with the same customer details
+  returns the original order — same 201 and body — and does not touch the
+  cart, even if it has been refilled since. The same key with different
+  details → 409 `IDEMPOTENCY_KEY_REUSED`. A new key is a new request: once
+  an order has emptied the cart, it gets 422 `CART_EMPTY`. A retry made
+  while the first attempt is still in flight may see 409 `CART_CONFLICT`
+  or 422 `CART_EMPTY`; retrying again replays the order. Two concurrent
+  placements can never both succeed.
+- **Reads.** `orderId` must be a lowercase UUID (else 400, field
+  `orderId`). An unknown id, or another owner's order, is 404
+  `ORDER_NOT_FOUND`. There is no `GET /v1/orders` list — order history is
+  out of scope (404 `ROUTE_NOT_FOUND`).
+- **In-memory.** Orders live in the process and are lost on restart
+  (ADR-0016; ADR-0004 is now `Accepted` for Order).
+- **Shapes** are defined in `@contracts/api-contracts` (`order.ts`:
+  `createOrderRequestSchema`, `orderParamsSchema`, `orderResponseSchema`,
+  `customerDetailsSchema`, `orderIdSchema`, `orderStatusSchema`), with
+  committed JSON Schema for the response and the create request.
+
+## 14. What this document does not cover
+
+- **Order status changes, cancellation, payment, delivery or order
+  history** — none exist (ADR-0016).
 - **Authentication or authorization** — deferred per `CLAUDE.md`;
   `system-architecture.md` §8 gap 4 remains open.
-- **Idempotency semantics** — `idempotencyKey` is carried by the contract
-  layer (`docs/api/contracts.md` §3); how commerce-api uses it on retry is
-  still `system-architecture.md` §8 gap 3.
+- **Idempotency beyond order creation** — `POST /v1/orders` is the only
+  route that uses an idempotency key (§13). Everywhere else, including
+  `POST /v1/cart/items`, is still `system-architecture.md` §8 gap 3.
 - **Rate limiting, CORS** — not configured; `apps/web` does not call this
   service yet.

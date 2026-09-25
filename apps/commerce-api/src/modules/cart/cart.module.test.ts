@@ -1,3 +1,4 @@
+import { Injectable, Module } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { describe, expect, it } from "vitest";
 import { CartCatalog } from "./domain/cart-catalog";
@@ -52,5 +53,29 @@ describe("CartModule", () => {
       .addItem({ itemId: "tiramisu", quantity: 2 });
 
     expect(cart.subtotalCents).toBe(1500);
+  });
+
+  // Phase 9: the Order module injects both from outside CartModule
+  // (docs/features/phase-9-order-domain/plan.md §22).
+  it("exports CartService and CartOwnerResolver to an importing module", async () => {
+    @Injectable()
+    class Consumer {
+      constructor(
+        readonly cartService: CartService,
+        readonly cartOwnerResolver: CartOwnerResolver,
+      ) {}
+    }
+
+    @Module({ imports: [CartModule], providers: [Consumer] })
+    class ConsumerModule {}
+
+    const moduleRef = await Test.createTestingModule({
+      imports: [ConsumerModule],
+    }).compile();
+    const consumer = moduleRef.get(Consumer);
+
+    expect(consumer.cartService).toBeInstanceOf(CartService);
+    expect(consumer.cartOwnerResolver).toBeInstanceOf(SingleUserCartOwnerResolver);
+    expect(consumer.cartService).toBe(moduleRef.get(CartService));
   });
 });

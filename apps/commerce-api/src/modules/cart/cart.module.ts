@@ -26,5 +26,10 @@ import { CartService } from "./cart.service";
     { provide: CartCatalog, useClass: MenuCatalogAdapter },
     { provide: CartOwnerResolver, useClass: SingleUserCartOwnerResolver },
   ],
+  // For the Order module (Phase 9): CartService for prepareCheckout /
+  // completeCheckout, and CartOwnerResolver so Cart and Order share one
+  // identity binding — the authentication phase replaces the useClass above
+  // and both domains follow (docs/features/phase-9-order-domain/plan.md §22).
+  exports: [CartService, CartOwnerResolver],
 })
 export class CartModule {}
