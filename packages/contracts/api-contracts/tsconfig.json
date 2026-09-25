@@ -1,0 +1,11 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    // scripts/ imports src/ with an explicit .ts specifier so Node can run
+    // it directly (native type stripping does no path rewriting) — same
+    // reason @contracts/common's and @contracts/agent-intents's tsconfigs
+    // set this.
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/**/*", "scripts/**/*"]
+}

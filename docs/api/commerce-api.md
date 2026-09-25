@@ -1,20 +1,23 @@
 # Commerce API
 
-**Status:** Foundation only (Phase 6). No Menu, Cart, or Order domain route
-exists yet — only `GET /health` and the transport conventions every future
-route inherits.
+**Status:** Foundation (Phase 6) plus a read-only Menu domain (Phase 7).
+`GET /health`, `GET /v1/menu`, and `GET /v1/menu/items/:itemId` all exist.
+Cart and Order routes do not.
 **Related:** [`system-architecture.md`](../architecture/system-architecture.md)
 §1, §5 · [`architecture-decisions.md`](../architecture/architecture-decisions.md)
-ADR-0013 ·
-[`docs/features/phase-6-commerce-api-foundation/`](../features/phase-6-commerce-api-foundation/)
+ADR-0013, ADR-0014 ·
+[`docs/features/phase-6-commerce-api-foundation/`](../features/phase-6-commerce-api-foundation/),
+[`docs/features/phase-7-menu-domain/`](../features/phase-7-menu-domain/)
 · [`docs/api/contracts.md`](./contracts.md)
 
 This document is a working reference for `apps/commerce-api`'s HTTP surface:
 what a request and response actually look like on the wire, what every error
-code means, and which conventions a future Menu, Cart, or Order route must
-follow rather than invent. Every behaviour described below is exercised by a
-real test (`src/common/**/*.test.ts`, `test/*.e2e.test.ts`) — this file
-explains why the tests assert what they do, not a separate claim about it.
+code means, and which conventions a future Cart or Order route must follow
+rather than invent — Menu (§11) is the first domain to actually follow them.
+Every behaviour described below is exercised by a real test
+(`src/common/**/*.test.ts`, `src/modules/**/*.test.ts`, `test/*.e2e.test.ts`)
+— this file explains why the tests assert what they do, not a separate claim
+about it.
 
 ## 1. Style
 
@@ -93,6 +96,7 @@ schema but nothing in this service populates it yet.
 | 404 | `ROUTE_NOT_FOUND` | No route matches — Nest's own automatic 404, mapped to this shape. |
 | 413 | `PAYLOAD_TOO_LARGE` | The request body exceeds 16 KB. |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | The request has a body but its `Content-Type` is not `application/json`. |
+| 404 | `MENU_ITEM_NOT_FOUND` | A well-formed `itemId` names no item (Phase 7) — distinct from `ROUTE_NOT_FOUND`, which means no route matched at all. |
 | 500 | `INTERNAL_ERROR` | Anything unexpected. The response never contains a stack trace, the original exception's message, or the request payload — the full detail is logged server-side instead, tagged with the request's id. |
 | 422 | *reserved* | A future domain-rule failure (e.g. an out-of-range quantity a schema bound alone can't express). Not used by anything yet. |
 | 409 | *reserved* | A future idempotency conflict. `system-architecture.md` §8 still calls idempotency undesigned. |
@@ -181,10 +185,57 @@ downstream call — so there is no separate readiness endpoint.
 }
 ```
 
-## 11. What this document does not cover
+## 11. Menu (Phase 7)
 
-- **Any Menu, Cart, or Order route** — none exists. This document describes
-  the transport it will be built on.
+The first, and so far only, domain route. Read-only: no write, update, or
+delete of any kind.
+
+```jsonc
+// GET /v1/menu → 200, always this shape.
+{
+  "categories": [
+    {
+      "id": "desserts",
+      "name": "Desserts",
+      "items": [
+        {
+          "id": "tiramisu",
+          "categoryId": "desserts",
+          "name": "Tiramisu",
+          "description": "Espresso-soaked ladyfingers, mascarpone.",
+          "longDescription": "Espresso-soaked ladyfingers layered with mascarpone cream, dusted with cocoa. Made in-house, rested overnight.",
+          "priceCents": 750,
+          "available": true,
+          "dietaryTags": ["vegetarian"],
+          "allergens": ["gluten", "dairy", "egg"],
+          "calories": 450
+        }
+      ]
+    }
+  ]
+}
+```
+
+```jsonc
+// GET /v1/menu/items/:itemId → 200, the item alone (same shape as above).
+// A well-formed but unknown itemId → 404 { "code": "MENU_ITEM_NOT_FOUND", "message": "Menu item not found." }
+// A malformed itemId (e.g. "Bad_ID") → 400 { "code": "INVALID_PAYLOAD", "field": "itemId", "message": "..." }
+```
+
+- **Unavailable items are returned, not hidden.** `available: false` is a
+  display flag (`apps/web` already renders it as "Unavailable"); nothing in
+  this phase enforces it — that belongs to whichever phase adds a Cart.
+- **No `GET /v1/menu/categories` and no query filtering.** Categories arrive
+  nested inside `/v1/menu`; nothing in the product yet needs a
+  server-side filter over six items. See ADR-0014, `docs/features/phase-7-menu-domain/requirements.md`.
+- **Response shapes** are defined in `@contracts/api-contracts`
+  (`menuResponseSchema`, `menuItemResponseSchema`), not locally to this
+  service — see `docs/api/contracts.md`.
+
+## 12. What this document does not cover
+
+- **Any Cart or Order route** — neither exists yet. §11 covers the one
+  domain that does.
 - **Authentication or authorization** — deferred per `CLAUDE.md`;
   `system-architecture.md` §8 gap 4 remains open.
 - **Idempotency semantics** — `idempotencyKey` is carried by the contract

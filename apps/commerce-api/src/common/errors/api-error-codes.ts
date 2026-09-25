@@ -12,6 +12,11 @@ export const API_ERROR_CODES = {
   PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
   UNSUPPORTED_MEDIA_TYPE: "UNSUPPORTED_MEDIA_TYPE",
   INTERNAL_ERROR: "INTERNAL_ERROR",
+  // The Menu domain's own code (modules/menu/domain/menu.errors.ts) — the
+  // first domain-owned code this file carries, per the same "domain codes
+  // arrive with the service that owns them" rule @contracts/common's
+  // errors.ts states.
+  MENU_ITEM_NOT_FOUND: "MENU_ITEM_NOT_FOUND",
   // Fallback only, for a Nest HttpException status this filter has no
   // explicit mapping for. Nothing in this phase throws one — see
   // all-exceptions.filter.ts's STATUS_TO_CODE map, which is where the real

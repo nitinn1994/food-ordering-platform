@@ -1,12 +1,18 @@
 # Contracts
 
 **Status:** `packages/contracts/{common,ui-commands,agent-intents}` are
-scaffolded and working (Phase 5). `packages/contracts/api-contracts` is
-still empty — no producer exists yet.
+scaffolded and working (Phase 5). `packages/contracts/api-contracts` now has
+its first producer, `commerce-api`'s Menu domain (Phase 7): `menu.ts`'s
+`menuResponseSchema` and `menuItemResponseSchema`, consumed by
+`apps/commerce-api/src/modules/menu`. This document's own scope is still the
+two intent/command vocabularies below (§1–§9); `api-contracts`' schemas are
+documented in [`docs/api/commerce-api.md`](./commerce-api.md) §11 instead,
+next to the routes that return them.
 **Related:** [`system-architecture.md`](../architecture/system-architecture.md) §6 ·
 [`architecture-decisions.md`](../architecture/architecture-decisions.md)
-ADR-0003, ADR-0012 ·
-[`docs/features/phase-5-contract-foundation/`](../features/phase-5-contract-foundation/)
+ADR-0003, ADR-0012, ADR-0014 ·
+[`docs/features/phase-5-contract-foundation/`](../features/phase-5-contract-foundation/),
+[`docs/features/phase-7-menu-domain/`](../features/phase-7-menu-domain/)
 
 This document is a working reference for the contract layer: how to name a
 new field, what a valid message actually looks like on the wire, and which
@@ -220,7 +226,7 @@ each. Full detail in
 | D9 | ISO-8601 or epoch millis? | ISO-8601 on the wire |
 | D10 | Commit generated schema, or generate on demand? | Commit, guarded by a freshness test |
 | D11 | Forbid `apps/web` from importing `agent-intents`? | Yes — ESLint `no-restricted-imports` |
-| D12 | Write `api-contracts` now? | No — no producer exists yet |
+| D12 | Write `api-contracts` now? | No — no producer exists yet (superseded by Phase 7 / ADR-0014, once `commerce-api`'s Menu domain became a real producer) |
 | D13 | Include `cartId` in intents? | Omit — single-user assumption; revisit with authorization |
 
 ## 9. Contract tests as documentation

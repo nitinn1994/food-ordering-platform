@@ -10,6 +10,7 @@ import type { ContractError } from "@contracts/common";
 import type { Response } from "express";
 import { API_ERROR_CODES, type ApiErrorCode } from "./api-error-codes";
 import { ApiException } from "./api.exception";
+import { DomainError } from "./domain.error";
 
 const STATUS_TO_CODE: Partial<Record<number, ApiErrorCode>> = {
   [HttpStatus.NOT_FOUND]: API_ERROR_CODES.ROUTE_NOT_FOUND,
@@ -67,6 +68,16 @@ export class AllExceptionsFilter implements ExceptionFilter {
   } {
     if (exception instanceof ApiException) {
       return { status: exception.getStatus(), error: exception.error };
+    }
+
+    // A domain module's own error (e.g. modules/menu/domain/menu.errors.ts's
+    // MenuItemNotFoundError) — this is the one place its status and code
+    // become an actual HTTP response (plan.md OD7).
+    if (exception instanceof DomainError) {
+      return {
+        status: exception.status,
+        error: { code: exception.code, message: exception.message },
+      };
     }
 
     if (exception instanceof HttpException) {

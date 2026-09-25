@@ -141,7 +141,12 @@ Zod (authored)  →  JSON Schema (generated)  →  Pydantic (generated)
 
 ## ADR-0004 — Simulate the database behind a repository interface
 
-**Status:** Proposed · **Date:** 2026-09-14
+**Status:** Accepted for Menu (Phase 7); still Proposed for Cart and Order ·
+**Date:** 2026-09-14 (updated 2026-09-25, Phase 7)
+
+Phase 7 adopted this decision for the Menu domain specifically — see
+ADR-0014. Which storage Cart and Order use is not decided by that adoption;
+this ADR remains `Proposed` for both until their own phases decide it.
 
 ### Context
 
@@ -770,5 +775,80 @@ this entry records the outcome.
   presence on a 413 response) existed only after the live check surfaced
   the gap. `test/validation.e2e.test.ts` and `test/app.e2e.test.ts` both
   assert header presence on every response class now, including errors.
+
+---
+
+## ADR-0014 — Menu domain: in-memory repository, a new `api-contracts` package, and a shared domain-error base
+
+**Status:** Accepted · **Date:** 2026-09-25 (Phase 7)
+
+### Context
+
+`apps/commerce-api` had no domain until Phase 7 (ADR-0013 §8): read-only
+Menu is the first. Three things needed a decision before writing it: where
+its data comes from, where its response shapes live, and how a domain
+failure (an unknown item) becomes an HTTP response without coupling the
+domain layer to Nest.
+
+### Decision
+
+1. **Data source: an in-memory repository over static seed data, behind
+   `MenuRepository` (`apps/commerce-api/src/modules/menu/domain/`).** This
+   adopts ADR-0004 for Menu specifically — not for Cart or Order, which
+   still decide their own storage. Menu is read-only, so ADR-0004's main
+   risk (an in-memory store making transactional semantics look easier than
+   they are) does not apply: there is nothing to write. The seed
+   (`infrastructure/menu.seed.ts`) is a temporary copy of
+   `apps/web/src/lib/fixtures/menu.ts`, plus `categoryId` on each item —
+   commerce-api may not import `apps/web` (the ESLint boundary ADR-0013
+   added), so this is a copy, not a shared module, until the web
+   integration phase deletes the fixture.
+2. **Response shapes: a new `packages/contracts/api-contracts` package**,
+   built the same way as `common`, `ui-commands`, and `agent-intents` (raw-TS
+   `exports`, a committed and drift-tested JSON Schema). This is the
+   directory `system-architecture.md` §6 already reserved for commerce-api's
+   own contracts; Phase 5 (D12) left it empty only because no producer
+   existed yet. `/v1/menu`'s response is wrapped in `{ categories: [...] }`,
+   not a bare array, so a field can be added later without breaking callers.
+3. **Domain errors: an abstract `DomainError` base
+   (`apps/commerce-api/src/common/errors/domain.error.ts`), plus one branch
+   in `AllExceptionsFilter`.** `DomainError.status` is a plain `number`, not
+   the `HttpStatus` enum, so the domain layer that throws these (e.g.
+   `MenuItemNotFoundError`) stays free of any `@nestjs/common` or `express`
+   import. `MenuItemNotFoundError` is `404 MENU_ITEM_NOT_FOUND`, distinct
+   from Nest's own `404 ROUTE_NOT_FOUND`, so a caller can tell "no such item"
+   apart from "wrong URL". A future Cart or Order domain error extends the
+   same base rather than each module inventing its own filter branch.
+
+### Layering
+
+`MenuController → MenuService → MenuRepository (abstract) →
+InMemoryMenuRepository (infrastructure)`, matching the shape ADR-0013 §8
+already fixed for every future domain: only `infrastructure/` touches
+storage, and the controller contains no branching. `MenuRepository` is an
+abstract class, not a TypeScript interface, so it doubles as its own Nest DI
+token — `MenuService` is injected with it by class type, no `@Inject()`,
+the same convention Phase 6 established.
+
+### Consequences
+
+- **The Menu seed and the web fixture are two copies of the same data**,
+  until the web integration phase deletes the fixture and points
+  `apps/web` at `GET /v1/menu` instead. This is a known, temporary cost, not
+  an oversight — recorded in `menu.seed.ts` itself.
+- **`api-contracts/menu.v1.json` becomes the de facto Menu wire contract**
+  the moment a real consumer (a future `apps/web` integration, or
+  `ai-service`) reads it. In-major changes must stay additive, the same
+  compatibility rule the other three contract packages already follow.
+- **ADR-0004 is now partially decided.** It no longer speaks for the whole
+  API — Menu is settled; Cart and Order remain open, and adopting an
+  in-memory approach for Menu does not obligate them to the same choice.
+- **`DomainError` is now the second error path into `AllExceptionsFilter`**,
+  alongside `ApiException`. Both produce exactly a `@contracts/common`
+  `ContractError` body; which one a future module uses is a matter of
+  whether it wants to construct the response directly (`ApiException`) or
+  define its own named error types (`DomainError` subclasses) — Menu chose
+  the latter because "item not found" is a concept the domain layer itself
+  should be able to name.
 
 ---

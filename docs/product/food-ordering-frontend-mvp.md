@@ -3,8 +3,9 @@
 **Status:** Sections 1–8 (the original MVP) are implemented — Phase 1, fully
 delivered. Section 9 (Phase 2 additions) is implemented. Section 10 (Phase 3
 additions) is implemented. Section 11 (Phase 4 additions) is implemented.
-Section 12 (Phase 5 additions) is implemented.
-**Last updated:** 2026-09-25 (Phase 5, sub-phase 5.4)
+Section 12 (Phase 5 additions) is implemented. Section 13 (Phase 7
+additions) is implemented.
+**Last updated:** 2026-09-25 (Phase 7, sub-phase 7.4)
 **Related:** [`system-architecture.md`](../architecture/system-architecture.md) ·
 [`phase-0-discovery.md`](../architecture/phase-0-discovery.md) ·
 [`architecture-decisions.md`](../architecture/architecture-decisions.md)
@@ -365,3 +366,56 @@ keyword, so generated Pydantic will be a plain `Union` discriminated by its
 `Literal` fields, not a Pydantic tagged union — functional, but with
 different error messages than a tagged union would give. This is the first
 thing to verify once `apps/ai-service` is scaffolded.
+
+## 13. Phase 7 additions
+
+Sections 1–12 above are the delivered MVP through Phase 6 (NestJS
+commerce-api foundation, which added nothing to this document — it built no
+domain and changed no product-facing capability). Phase 7 layers a
+read-only Menu domain onto `apps/commerce-api` — see
+`docs/features/phase-7-menu-domain/` for the full plan.
+
+Like Phase 5, Phase 7 adds nothing to `apps/web`'s user journeys and
+reverses nothing in §4/§9/§10/§11: `apps/web` still reads
+`src/lib/fixtures/menu.ts`, unchanged, and no route or component in
+`apps/web` was touched. Its relevance to this document is indirect but
+real: §7 item 1 names "fixture menu data → replaced by `commerce-api` menu
+reads" as temporary scaffolding, and Phase 7 is the first phase that gives
+that replacement somewhere to land.
+
+**Added, entirely inside `apps/commerce-api` and a new contracts package:**
+
+- `GET /v1/menu` and `GET /v1/menu/items/:itemId` — the first real domain
+  routes commerce-api exposes, following the layering ADR-0013 §8 reserved
+  in advance (controller → service → repository interface, only
+  `infrastructure/` touching storage).
+- A new `@contracts/api-contracts` package, whose `menuResponseSchema` and
+  `menuItemResponseSchema` are, deliberately, the same shape as
+  `apps/web`'s existing `MenuItem`/`MenuCategory` fixture types plus one
+  addition (`categoryId` on each item) — so a future phase that switches
+  `apps/web` from the fixture to this API changes one module
+  (`src/lib/menu/menuSource.ts`'s `getMenu()`), not every component that
+  reads a `MenuItem`.
+- An in-memory `MenuRepository`, seeded from a copy of the same fixture
+  data (`apps/commerce-api` may not import `apps/web`, by the ESLint
+  boundary ADR-0013 added — see ADR-0014). This is a second, temporary copy
+  of the menu, not a shared one, until the switch above happens and the
+  original fixture is deleted.
+
+**Explicitly declined, not deferred:** a `GET /v1/menu/categories` route and
+server-side query filtering — recorded in
+`docs/features/phase-7-menu-domain/requirements.md`, declined because
+nothing in the product needs either yet (`apps/web`'s own `filterMenu`
+already does this client-side, over six items).
+
+**Still out of scope**, unchanged from §4/§9/§10/§11/§12: switching
+`apps/web` to call the new API (a separate phase — CORS and a frontend
+change are both still undone), enforcing `MenuItem.available` anywhere (the
+API returns it as a flag, the same as the fixture always has; nothing
+rejects an unavailable item), and everything on the backend/AI/voice/
+payments/infra list Phase 5's §4 already named.
+
+**Known gap, recorded rather than hidden:** whether `apps/web` can actually
+be pointed at `GET /v1/menu` without a shape mismatch is not yet
+proven — `apps/web` was not touched this phase, so this is inferred from
+the schemas matching, not from an integration having been run.

@@ -2,6 +2,7 @@ import { type DynamicModule, Module } from "@nestjs/common";
 import { ConfigModule } from "./config/config.module";
 import type { AppConfig } from "./config/env.schema";
 import { HealthModule } from "./health/health.module";
+import { MenuModule } from "./modules/menu/menu.module";
 
 // Dynamic (`forRoot(config)`) rather than a plain `@Module`, because the
 // validated config comes from main.ts's own parseEnv() call, not from this
@@ -15,14 +16,15 @@ import { HealthModule } from "./health/health.module";
 // that split is load-bearing, not stylistic (a real ordering bug was found
 // and fixed in sub-phase 6.3 because of it).
 //
-// No Menu, Cart, or Order module exists yet (requirements.md AC13) —
-// HealthModule is the only domain-adjacent module so far.
+// MenuModule (Phase 7) is the first domain module — read-only, one per
+// phase, no umbrella "Commerce" module (ADR-0013 §8). Cart and Order still
+// do not exist.
 @Module({})
 export class AppModule {
   static forRoot(config: AppConfig): DynamicModule {
     return {
       module: AppModule,
-      imports: [ConfigModule.forRoot(config), HealthModule],
+      imports: [ConfigModule.forRoot(config), HealthModule, MenuModule],
     };
   }
 }

@@ -3,6 +3,7 @@ import { HttpException, HttpStatus, NotFoundException } from "@nestjs/common";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AllExceptionsFilter } from "./all-exceptions.filter";
 import { ApiException } from "./api.exception";
+import { DomainError } from "./domain.error";
 
 function fakeResponse(): {
   res: { status: (code: number) => typeof res; json: (body: unknown) => void };
@@ -53,6 +54,41 @@ describe("AllExceptionsFilter", () => {
       message: "bad",
       field: "itemId",
     });
+  });
+
+  it("uses a DomainError's own status and code, not the generic 500 path", () => {
+    class FakeDomainError extends DomainError {
+      constructor() {
+        super(404, "MENU_ITEM_NOT_FOUND", "Menu item not found.");
+      }
+    }
+    const filter = new AllExceptionsFilter();
+    const { res, state } = fakeResponse();
+
+    filter.catch(new FakeDomainError(), fakeHost(res));
+
+    expect(state.status).toBe(404);
+    expect(state.body).toEqual({
+      code: "MENU_ITEM_NOT_FOUND",
+      message: "Menu item not found.",
+    });
+  });
+
+  it("does not log a DomainError below 500 to stderr", () => {
+    class FakeDomainError extends DomainError {
+      constructor() {
+        super(404, "MENU_ITEM_NOT_FOUND", "Menu item not found.");
+      }
+    }
+    const filter = new AllExceptionsFilter();
+    const { res } = fakeResponse();
+    const stderrSpy = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation(() => true);
+
+    filter.catch(new FakeDomainError(), fakeHost(res));
+
+    expect(stderrSpy).not.toHaveBeenCalled();
   });
 
   it("maps a 404 HttpException to ROUTE_NOT_FOUND", () => {

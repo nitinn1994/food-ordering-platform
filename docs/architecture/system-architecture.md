@@ -159,7 +159,7 @@ than once per family:
 | `common/` | — | `ui-commands`, `agent-intents`, `commerce-api` | Shared primitives: contract version, identifiers, quantity, integer-cents money, correlation id, idempotency key, ISO-8601 timestamp, structured error |
 | `ui-commands/` | `ai-service` | `apps/web` | What the screen should do |
 | `agent-intents/` | `ai-service` | `commerce-api` | What should happen to commerce state |
-| `api-contracts/` | `commerce-api` | `apps/web`, `ai-service` | Request/response shapes for the commerce API — still empty; no producer exists yet |
+| `api-contracts/` | `commerce-api` | `apps/web`, `ai-service` | Request/response shapes for the commerce API. First populated in Phase 7 by the Menu domain (`menuResponseSchema`, `menuItemResponseSchema`); neither `apps/web` nor `ai-service` consumes it yet |
 
 `commerce-api` (Phase 6) is a real runtime consumer of `common` — its error
 model (`docs/api/commerce-api.md` §5/§6) is exactly `common`'s
