@@ -1,6 +1,6 @@
 # Getting Started
 
-**Last updated:** 2026-09-25 (Phase 7, sub-phase 7.4)
+**Last updated:** 2026-09-25 (Phase 8, sub-phase 8.5)
 **Status:** `apps/web`, all four of `packages/contracts/{common,ui-commands,
 agent-intents,api-contracts}`, and `apps/commerce-api` are scaffolded and
 working — Phase 1 (frontend foundation), Phase 2 (menu browsing: search, item
@@ -12,10 +12,14 @@ primitives, envelopes, versioning, strict validation, and generated JSON
 Schema for both `ui-commands` and `agent-intents`), Phase 6 (NestJS
 commerce-api foundation: configuration, request validation against the
 Phase 5 contract schemas, a structured error model, correlation and request
-logging, URI versioning, and `GET /health`), and Phase 7 (Menu domain: a new
+logging, URI versioning, and `GET /health`), Phase 7 (Menu domain: a new
 `@contracts/api-contracts` package, an in-memory `MenuRepository`, and
-`GET /v1/menu` / `GET /v1/menu/items/:itemId`) are all complete.
-`commerce-api` implements no Cart or Order route yet. `apps/ai-service` does
+`GET /v1/menu` / `GET /v1/menu/items/:itemId`), and Phase 8 (Cart domain:
+`GET /v1/cart`, `POST /v1/cart/items`, `PATCH`/`DELETE
+/v1/cart/items/:itemId`, backed by an in-memory, version-checked
+`CartRepository` and priced live from the Menu) are all complete.
+`commerce-api` implements no Order route yet, and nothing calls the Cart
+API yet — `apps/web` still uses its own local cart. `apps/ai-service` does
 not exist yet.
 
 ---
@@ -35,8 +39,8 @@ same change. A scaffolding phase that leaves this file stale has not finished.
 
 | | |
 | --- | --- |
-| Applications | `apps/web` — Next.js, TypeScript, working. `apps/commerce-api` — NestJS, TypeScript, working (Phase 6 foundation + Phase 7 read-only Menu domain; no Cart/Order route). `apps/ai-service` — empty directory, not scaffolded. |
-| Shared packages | `packages/contracts/common`, `ui-commands`, `agent-intents`, `api-contracts` — Zod schemas, all working, each with committed generated JSON Schema. `api-contracts` gained its first producer in Phase 7 (`commerce-api`'s Menu domain). |
+| Applications | `apps/web` — Next.js, TypeScript, working. `apps/commerce-api` — NestJS, TypeScript, working (Phase 6 foundation + Phase 7 read-only Menu domain + Phase 8 Cart domain; no Order route). `apps/ai-service` — empty directory, not scaffolded. |
+| Shared packages | `packages/contracts/common`, `ui-commands`, `agent-intents`, `api-contracts` — Zod schemas, all working, each with committed generated JSON Schema. `api-contracts` gained its first producer in Phase 7 (`commerce-api`'s Menu domain) and its first request schemas in Phase 8 (Cart). |
 | Dependency manifests | Root `package.json` + `pnpm-workspace.yaml` (pnpm + Turborepo, ADR-0002); `apps/web/package.json`; `apps/commerce-api/package.json`; one `package.json` per `packages/contracts/*` package. |
 | Build tooling | Turborepo (`turbo.json`), TypeScript (`tsconfig.base.json`), ESLint flat config (`eslint.config.mjs`, enforcing `apps/web`'s `agent-intents` import restriction — ADR-0012 — and `apps/commerce-api`'s `ui-commands`/`apps/web` import restriction — ADR-0013), Vitest per package. Each contracts package also has a `build` script (`scripts/emit-schema.ts`) that generates its committed JSON Schema; `packages/contracts/tools/` holds a small Node module hook those scripts use, and only they use. `apps/commerce-api`'s own `build` is `vite build` (SSR mode) — a different mechanism, since it produces a runnable service, not a JSON Schema artifact (ADR-0013). |
 | CI | None. `apps/ai-service` will need its own invocation path when it exists — see ADR-0002's residual risk. |
@@ -55,19 +59,20 @@ Verified working with:
 ## Commands
 
 Run from the repository root unless noted. All verified passing as of
-2026-09-25 (Phase 7, sub-phase 7.4).
+2026-09-25 (Phase 8, sub-phase 8.5), except `pnpm install`, last run in
+Phase 7 — Phase 8 added no dependency and no workspace link.
 
 | Task | Command | Status |
 | ---- | ------- | ------ |
 | Install | `pnpm install` | Verified |
 | Type check (all packages) | `pnpm turbo run typecheck` | Verified |
 | Lint (all packages) | `pnpm turbo run lint` | Verified |
-| Test (all packages) | `pnpm turbo run test` | Verified — 375 tests (43 `common` + 33 `ui-commands` + 31 `agent-intents` + 19 `api-contracts` + 174 `web` + 75 `commerce-api`), up from 329 before Phase 7. The first five packages' pre-existing tests (`api-contracts` is new) are unchanged in count and outcome from Phase 6. |
-| Build (all packages) | `pnpm turbo run build` | Verified — `/`, `/cart`, `/checkout`, `/_not-found` all prerender; each contracts package's `build` regenerates its committed `schema/*.v1.json`; `commerce-api`'s `build` produces `dist/main.js`. Each contracts package's `build` prints a `no output files found` warning from turbo (its `outputs` key covers `dist/**`, not `schema/**`) — pre-existing since Phase 5, not a Phase 7 regression. |
+| Test (all packages) | `pnpm turbo run test` | Verified — 503 tests (43 `common` + 33 `ui-commands` + 31 `agent-intents` + 45 `api-contracts` + 174 `web` + 177 `commerce-api`), up from 375 before Phase 8. `common`, `ui-commands`, `agent-intents` and `web` are unchanged in count and outcome; the 19 pre-existing `api-contracts` tests and 75 pre-existing `commerce-api` tests are unchanged, with 26 and 102 new tests added respectively. |
+| Build (all packages) | `pnpm turbo run build` | Verified — `/`, `/cart`, `/checkout`, `/_not-found` all prerender; each contracts package's `build` regenerates its committed `schema/*.v1.json`; `commerce-api`'s `build` produces `dist/main.js`. Each contracts package's `build` prints a `no output files found` warning from turbo (its `outputs` key covers `dist/**`, not `schema/**`) — pre-existing since Phase 5, not a Phase 7 or Phase 8 regression. |
 | Generate one contract package's JSON Schema | `pnpm --filter @contracts/<name> build` | Verified for `common`, `ui-commands`, `agent-intents`, `api-contracts` — run after any schema change, before committing |
 | Run `apps/web` in development | `pnpm --filter web dev` | Verified — serves on http://localhost:3000; `/cart` and `/checkout` also live |
-| Run `apps/commerce-api` in development | `pnpm --filter commerce-api dev` | Verified — serves on http://127.0.0.1:3001; `GET /health` → `200 {"status":"ok"}`; `GET /v1/menu` and `GET /v1/menu/items/:itemId` also live |
-| Run `apps/commerce-api`'s built output | `pnpm --filter commerce-api build && pnpm --filter commerce-api start` | Verified — same `/health` and `/v1/menu*` responses, from `dist/main.js` |
+| Run `apps/commerce-api` in development | `pnpm --filter commerce-api dev` | Verified — serves on http://127.0.0.1:3001; `GET /health` → `200 {"status":"ok"}`; `GET /v1/menu` and `GET /v1/menu/items/:itemId` also live, and the four `/v1/cart` routes (Phase 8) |
+| Run `apps/commerce-api`'s built output | `pnpm --filter commerce-api build && pnpm --filter commerce-api start` | Verified — same `/health`, `/v1/menu*` and `/v1/cart*` responses, from `dist/main.js` |
 
 **Not verified this phase, same gap as Phases 3–6:** interactive browser
 checks against `apps/web`. `NOT_APPLICABLE` for Phase 7 specifically — it
@@ -79,7 +84,11 @@ routes were verified instead by `curl` against both `dev` and the built
 [`docs/api/commerce-api.md`](../api/commerce-api.md) §6 and §11 (200 for
 the menu and a found item, 200 with `available: false` for `gelato`, 404
 `MENU_ITEM_NOT_FOUND` for an unknown item, 400 `INVALID_PAYLOAD` for a
-malformed one) — not merely by the automated test suite.
+malformed one) — not merely by the automated test suite. Phase 8's Cart
+routes were verified the same way, against `dev` and `start`: an empty
+cart, add, merge, absolute set, 422 `MENU_ITEM_UNAVAILABLE`, remove, 404
+`CART_ITEM_NOT_FOUND` on a repeat remove, and 404 `ROUTE_NOT_FOUND` for the
+deliberately absent `DELETE /v1/cart`.
 
 `packages/contracts/{common,ui-commands,agent-intents,api-contracts}` have
 no `dev`/`start` command — they are libraries, not runnable services.
@@ -145,8 +154,9 @@ apps/
                                context, content-type guard, body parser,
                                request logging, validation pipe, exception
                                filter, shutdown hooks)
-    src/app.module.ts         wires ConfigModule + HealthModule; no HTTP
-                               middleware of its own (see configure-app.ts)
+    src/app.module.ts         wires ConfigModule + HealthModule + MenuModule
+                               + CartModule; no HTTP middleware of its own
+                               (see configure-app.ts)
     src/config/               env.schema.ts (Zod, fail-fast), config.module.ts
                                (APP_CONFIG, provided by main.ts's already-
                                validated config), test-config.ts (test-only)
@@ -167,10 +177,14 @@ apps/
                                correlation ids; X-Request-Id always
                                server-generated, X-Correlation-Id echoed if
                                valid else generated
+    src/common/immutability/  deep-freeze.ts — the one recursive freeze both
+                               in-memory repositories (Menu, Cart) apply to
+                               what they return
     src/health/               health.module.ts, health.controller.ts (GET
                                /health, unversioned), health.service.ts
     test/                     app.e2e.test.ts, validation.e2e.test.ts,
-                               menu.e2e.test.ts (real HTTP via listen(0) +
+                               menu.e2e.test.ts, cart.e2e.test.ts (real
+                               HTTP via listen(0) +
                                fetch, no supertest),
                                fixtures/validation-fixture.controller.ts
                                (test-only, proves the pipeline against a
@@ -184,6 +198,21 @@ apps/
       infrastructure/         menu.seed.ts (temporary copy of the web
                                fixture, plus categoryId),
                                in-memory-menu.repository.ts
+    src/modules/cart/         the second domain module and the first with
+                               writes (Phase 8) — cart.controller.ts,
+                               cart.service.ts, cart.mapper.ts,
+                               cart.module.ts, cart.contract-compat.test.ts
+                               (every agent intent ↔ a Cart route)
+      domain/                 cart.types.ts, cart.operations.ts (pure
+                               add/set/remove/clear), cart.pricing.ts
+                               (priceCart — live menu price),
+                               cart.invariants.ts, cart.errors.ts, and three
+                               abstract ports: cart.repository.ts,
+                               cart-catalog.ts, cart-owner.resolver.ts
+      infrastructure/         in-memory-cart.repository.ts (optimistic
+                               version check), menu-catalog.adapter.ts
+                               (→ MenuService.findItemById),
+                               single-user-cart-owner.resolver.ts
 packages/
   contracts/
     common/         scaffolded, working (Phase 5) — shared primitives, no
@@ -200,8 +229,10 @@ packages/
                      RemoveItemFromCart, SetCartItemQuantity; a single-intent
                      request envelope with an idempotency key
     api-contracts/  scaffolded, working (Phase 7) — request/response shapes
-                     (commerce-api → everyone); first schemas are the Menu
-                     domain's menuResponseSchema / menuItemResponseSchema
+                     (commerce-api → everyone): menu.ts (Phase 7 —
+                     menuResponseSchema / menuItemResponseSchema) and
+                     cart.ts (Phase 8 — the first request schemas, plus
+                     cartResponseSchema)
     tools/          register-relative-ts.mjs, resolve-relative-ts.mjs — a
                      Node module hook used only by each package's own
                      `build` script (schema generation); not part of any
@@ -221,6 +252,7 @@ docs/
   features/phase-5-contract-foundation/    requirements.md, plan.md, test-plan.md
   features/phase-6-commerce-api-foundation/  requirements.md, plan.md, test-plan.md
   features/phase-7-menu-domain/              requirements.md, plan.md, test-plan.md
+  features/phase-8-cart-domain/              requirements.md, plan.md, test-plan.md
 .claude/          ForgeFlow — rules, commands, agents, skills, workflows
 ```
 
@@ -245,7 +277,9 @@ replaces them — see
 §7:
 
 - `src/lib/fixtures/menu.ts` — replaced by `commerce-api` menu reads.
-- `src/lib/state/cartStore.tsx` — replaced by `commerce-api` cart ownership.
+- `src/lib/state/cartStore.tsx` — replaced by `commerce-api` cart ownership
+  (the backend Cart API exists since Phase 8; `apps/web` is not wired to it
+  yet, so this file is still the cart the UI uses).
 - `src/lib/commands/simulate.ts` — replaced by real `apps/ai-service` output.
 - `src/lib/checkout/order.ts` — replaced by `commerce-api` order creation,
   identity, and persistence (Phase 4; see
@@ -255,7 +289,8 @@ replaces them — see
 
 Phase 1 (sub-phases 1.1–1.4), Phase 2 (sub-phases 2.1–2.4), Phase 3
 (sub-phases 3.1–3.5), Phase 4 (sub-phases 4.1–4.5), Phase 5 (sub-phases
-5.1–5.4), Phase 6 (sub-phases 6.1–6.5), and Phase 7 (sub-phases 7.1–7.4) are
+5.1–5.4), Phase 6 (sub-phases 6.1–6.5), Phase 7 (sub-phases 7.1–7.4), and
+Phase 8 (sub-phases 8.1–8.5) are
 all implemented: workspace foundation, the `ui-commands` contracts package
 (5 commands, unchanged since Phase 2), the menu UI with search and item
 detail, real loading/error states via an async `getMenu()` seam, a complete
@@ -277,11 +312,14 @@ versioning, and `GET /health` (ADR-0013), and now a read-only Menu domain:
 a new `@contracts/api-contracts` package, an in-memory `MenuRepository`
 behind an abstract interface, `GET /v1/menu` and
 `GET /v1/menu/items/:itemId`, and a shared `DomainError` base for turning a
-domain module's own error into an HTTP response (ADR-0014).
+domain module's own error into an HTTP response (ADR-0014), and now a Cart
+domain: server-resolved single-owner identity, live menu pricing, an
+in-memory repository with an optimistic version check, and the four
+`/v1/cart` routes that execute the three adopted intents (ADR-0015).
 
-Cart and Order are the next major phases and have not been planned yet —
-`apps/commerce-api` has no route that mutates commerce state of any kind.
-Wiring `apps/web` to read the real menu instead of its own fixture is also
-still unplanned (Phase 7's OD8). `apps/ai-service` remains unplanned too.
+Order is the next major domain and has not been planned yet. Wiring
+`apps/web` to the real menu and cart instead of its own fixture and local
+cart is also still unplanned (Phase 7's OD8; Phase 8 left it out of scope).
+`apps/ai-service` remains unplanned too.
 
 Start planning any of them with `/forge`, which will route it to `/plan`.

@@ -12,3 +12,17 @@ export type {
   MenuItemResponse,
   MenuItemParams,
 } from "./menu";
+export {
+  addCartItemRequestSchema,
+  updateCartItemRequestSchema,
+  cartItemParamsSchema,
+  cartLineSchema,
+  cartResponseSchema,
+} from "./cart";
+export type {
+  AddCartItemRequest,
+  UpdateCartItemRequest,
+  CartItemParams,
+  CartLine,
+  CartResponse,
+} from "./cart";

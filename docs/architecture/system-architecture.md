@@ -222,12 +222,22 @@ Recorded rather than solved, because solving them is not Phase 0 work:
    matters most where the AI service retries an intent after a timeout, which
    is exactly where a duplicate order comes from. Phase 6 reserves HTTP status
    409 for a future idempotency conflict (`docs/api/commerce-api.md` §6) but
-   defines no mechanism — this gap is unchanged, not narrowed.
+   defines no mechanism — this gap is unchanged, not narrowed. Phase 8 made
+   it concrete rather than closing it: `POST /v1/cart/items` (the executor
+   of `AddItemToCart`) is a delta, so a retried add double-counts, and there
+   is still no idempotency-key store (ADR-0015). `PATCH` is idempotent by
+   being an absolute set. Phase 8 does use 409, but for an optimistic
+   *concurrency* conflict (`CART_CONFLICT`), not for idempotency. Nothing
+   retries yet; the first retrying caller has to resolve this gap.
 4. **Authorization boundaries are named but undesigned.** The system assumes a
    single user for now, so there is no subject to authorize. The shape of this
    changes materially once there is. Phase 6 added no authentication and no
    authorization to `commerce-api` (`CLAUDE.md`'s deferred list); any local
-   process can call it.
+   process can call it. Phase 8's Cart domain resolves cart ownership
+   server-side through a `CartOwnerResolver` port whose only adapter
+   returns one fixed owner — every caller shares one cart, deliberately,
+   rather than trusting an unauthenticated client-supplied id (ADR-0015).
+   Authentication replaces that one binding.
 5. **`X-Correlation-Id` reaches `commerce-api`'s logs but nothing consumes
    it yet.** Phase 5's open question 3 ("does `correlationId` need to
    survive into commerce-api's own logs?") is now answered — Phase 6's

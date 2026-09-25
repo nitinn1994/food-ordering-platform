@@ -419,3 +419,51 @@ payments/infra list Phase 5's §4 already named.
 be pointed at `GET /v1/menu` without a shape mismatch is not yet
 proven — `apps/web` was not touched this phase, so this is inferred from
 the schemas matching, not from an integration having been run.
+
+## 14. Phase 8 additions
+
+Phase 8 adds a Cart domain to `apps/commerce-api`. See
+`docs/features/phase-8-cart-domain/` for the full plan and ADR-0015 for the
+decisions. Like Phases 5–7, it adds nothing to `apps/web`'s user journeys
+and reverses nothing in §4/§9/§10/§11. `apps/web` still keeps its cart in
+`src/lib/state/cartStore.tsx` and prices it in `src/lib/cart/pricing.ts`,
+unchanged, and no route or component in `apps/web` was touched.
+
+Its relevance here is §7 items 2 and 3 (client-side cart state and
+client-side totals). Phase 8 is the first phase that gives both a backend
+replacement to move to. **Both remain temporary and both remain in use.**
+Nothing calls the Cart API yet.
+
+**Added, entirely inside `apps/commerce-api` and `@contracts/api-contracts`:**
+
+- `GET /v1/cart`, `POST /v1/cart/items`, `PATCH /v1/cart/items/:itemId`,
+  and `DELETE /v1/cart/items/:itemId`, the executors of the three Phase 5
+  intents (`AddItemToCart`, `SetCartItemQuantity`, `RemoveItemFromCart`).
+- The Phase 3 cart rules, now enforced by the backend: one line per item, a
+  repeated add merges, a 99 cap per line (rejected rather than clamped when
+  a merge would exceed it), Remove as the only way to delete a line, and
+  item count as the sum of quantities.
+- **`MenuItem.available` is now enforced**, by the backend only: an
+  unavailable item cannot be added or re-quantified. §13 recorded this as
+  unenforced anywhere. `apps/web` still enforces it only by disabling the
+  button.
+- Backend pricing that matches `pricing.ts`'s formulas (line = unit ×
+  quantity, subtotal = Σ lines), computed from the menu's *current* price on
+  every read. There is no tax, fee, tip, or discount, unchanged from §10.
+
+**Explicitly declined, not deferred:** `DELETE /v1/cart` (a general "empty
+my cart"). ADR-0011 made clearing the internal mechanism of a placed order,
+not a user-facing feature. Phase 8 keeps that decision, with a service-level
+`clearCart` for the Order phase and no route.
+
+**Still out of scope**, unchanged from §4/§9/§10/§11/§12/§13: switching
+`apps/web` to the Cart or Menu API (which needs CORS and a frontend change),
+cart persistence across a server restart (the cart is in-memory), more than
+one cart (the system is single-user, so every caller shares one cart), an
+Order domain, and everything on the backend/AI/voice/payments/infra list.
+
+**Known gap, recorded rather than hidden:** a retried "add to cart"
+request adds twice, because there is no idempotency key yet
+(`system-architecture.md` §8 gap 3). This does not matter while nothing
+calls the API, but it has to be resolved before a retrying caller (the AI
+service, or a flaky network path from `apps/web`) is wired in.

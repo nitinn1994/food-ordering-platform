@@ -2,6 +2,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
+import {
+  addCartItemRequestSchema,
+  cartResponseSchema,
+  updateCartItemRequestSchema,
+} from "../src/cart.ts";
 import { menuResponseSchema } from "../src/menu.ts";
 
 // See packages/contracts/common/scripts/emit-schema.ts for the rationale —
@@ -22,6 +27,24 @@ export const ARTIFACTS: readonly Artifact[] = [
     file: "menu.v1.json",
     id: "urn:food-ordering-platform:contracts:api-contracts:menu:v1",
     schema: menuResponseSchema,
+  },
+  // Request schemas are emitted as well as the response, unlike Menu: a
+  // Python caller (ai-service) will send these bodies, not just read them
+  // (docs/features/phase-8-cart-domain/plan.md §8).
+  {
+    file: "cart.v1.json",
+    id: "urn:food-ordering-platform:contracts:api-contracts:cart:v1",
+    schema: cartResponseSchema,
+  },
+  {
+    file: "cart-add-item-request.v1.json",
+    id: "urn:food-ordering-platform:contracts:api-contracts:cart-add-item-request:v1",
+    schema: addCartItemRequestSchema,
+  },
+  {
+    file: "cart-update-item-request.v1.json",
+    id: "urn:food-ordering-platform:contracts:api-contracts:cart-update-item-request:v1",
+    schema: updateCartItemRequestSchema,
   },
 ];
 

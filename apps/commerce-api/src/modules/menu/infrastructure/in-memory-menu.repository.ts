@@ -1,25 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import type { MenuItemId } from "@contracts/common";
+import { deepFreeze } from "../../../common/immutability/deep-freeze";
 import { assertMenuInvariants } from "../domain/menu.invariants";
 import { MenuRepository } from "../domain/menu.repository";
 import type { MenuCategory, MenuItem } from "../domain/menu.types";
 import { MENU_SEED } from "./menu.seed";
-
-// Recursively freezes a cloned value so a caller mutating what this
-// repository returns throws in strict mode, rather than silently corrupting
-// shared in-memory state (requirements.md AC7).
-function deepFreeze<T>(value: T): T {
-  if (Array.isArray(value)) {
-    for (const element of value) {
-      deepFreeze(element);
-    }
-  } else if (value !== null && typeof value === "object") {
-    for (const key of Object.keys(value)) {
-      deepFreeze((value as Record<string, unknown>)[key]);
-    }
-  }
-  return Object.freeze(value);
-}
 
 // The only adapter of MenuRepository so far. Only this file (and its own
 // seed) touches storage — everything above it (MenuService, the domain

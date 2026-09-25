@@ -1,0 +1,30 @@
+import { Module } from "@nestjs/common";
+import { MenuModule } from "../menu/menu.module";
+import { CartCatalog } from "./domain/cart-catalog";
+import { CartOwnerResolver } from "./domain/cart-owner.resolver";
+import { CartRepository } from "./domain/cart.repository";
+import { InMemoryCartRepository } from "./infrastructure/in-memory-cart.repository";
+import { MenuCatalogAdapter } from "./infrastructure/menu-catalog.adapter";
+import { SingleUserCartOwnerResolver } from "./infrastructure/single-user-cart-owner.resolver";
+import { CartController } from "./cart.controller";
+import { CartService } from "./cart.service";
+
+// The second domain module and the first with writes. The three bindings
+// below are the only place storage, menu source, and cart identity are
+// chosen (docs/features/phase-8-cart-domain/plan.md §16, §9, §5): a
+// database, a different catalog, or authenticated identity is a change to
+// one `useClass` here, not to CartService or the domain.
+//
+// Imports MenuModule for its exported MenuService, which only
+// MenuCatalogAdapter uses — Cart never touches Menu's repository or seed.
+@Module({
+  imports: [MenuModule],
+  controllers: [CartController],
+  providers: [
+    CartService,
+    { provide: CartRepository, useClass: InMemoryCartRepository },
+    { provide: CartCatalog, useClass: MenuCatalogAdapter },
+    { provide: CartOwnerResolver, useClass: SingleUserCartOwnerResolver },
+  ],
+})
+export class CartModule {}

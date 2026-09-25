@@ -85,4 +85,18 @@ describe("MenuService", () => {
       MenuItemNotFoundError,
     );
   });
+
+  it("findItemById() returns the domain item unmapped (Phase 8, OD14)", async () => {
+    const service = new MenuService(new FakeMenuRepository());
+
+    const result = await service.findItemById("tiramisu");
+
+    expect(result).toBe(ITEM);
+  });
+
+  it("findItemById() returns undefined for an unknown id, without throwing", async () => {
+    const service = new MenuService(new FakeMenuRepository());
+
+    await expect(service.findItemById("does-not-exist")).resolves.toBeUndefined();
+  });
 });

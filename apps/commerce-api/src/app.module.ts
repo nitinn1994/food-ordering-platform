@@ -2,6 +2,7 @@ import { type DynamicModule, Module } from "@nestjs/common";
 import { ConfigModule } from "./config/config.module";
 import type { AppConfig } from "./config/env.schema";
 import { HealthModule } from "./health/health.module";
+import { CartModule } from "./modules/cart/cart.module";
 import { MenuModule } from "./modules/menu/menu.module";
 
 // Dynamic (`forRoot(config)`) rather than a plain `@Module`, because the
@@ -17,14 +18,20 @@ import { MenuModule } from "./modules/menu/menu.module";
 // and fixed in sub-phase 6.3 because of it).
 //
 // MenuModule (Phase 7) is the first domain module — read-only, one per
-// phase, no umbrella "Commerce" module (ADR-0013 §8). Cart and Order still
-// do not exist.
+// phase, no umbrella "Commerce" module (ADR-0013 §8). CartModule (Phase 8)
+// is the second, and imports MenuModule itself for item validation and
+// pricing. Order still does not exist.
 @Module({})
 export class AppModule {
   static forRoot(config: AppConfig): DynamicModule {
     return {
       module: AppModule,
-      imports: [ConfigModule.forRoot(config), HealthModule, MenuModule],
+      imports: [
+        ConfigModule.forRoot(config),
+        HealthModule,
+        MenuModule,
+        CartModule,
+      ],
     };
   }
 }

@@ -22,7 +22,7 @@ made, and what they cost.
 | [0001](#adr-0001--monorepo-with-three-applications-and-a-shared-contracts-package) | Monorepo with three applications and a shared contracts package | Accepted |
 | [0002](#adr-0002--pnpm-workspaces--turborepo-for-the-typescript-graph) | pnpm workspaces + Turborepo for the TypeScript graph | Accepted |
 | [0003](#adr-0003--zod-as-contract-source-of-truth-pydantic-generated-for-python) | Zod as contract source of truth, Pydantic generated for Python | Accepted |
-| [0004](#adr-0004--simulate-the-database-behind-a-repository-interface) | Simulate the database behind a repository interface | Proposed |
+| [0004](#adr-0004--simulate-the-database-behind-a-repository-interface) | Simulate the database behind a repository interface | Accepted for Menu and Cart; Proposed for Order |
 | [0005](#adr-0005--refetch-after-mutation-for-frontend-freshness) | Refetch-after-mutation for frontend freshness | Proposed |
 | [0006](#adr-0006--jest-for-typescript-pytest-for-python) | Jest for TypeScript, pytest for Python | Proposed |
 | [0007](#adr-0007--defer-voice-entirely-rather-than-stub-a-provider) | Defer voice entirely rather than stub a provider | Proposed |
@@ -32,6 +32,8 @@ made, and what they cost.
 | [0011](#adr-0011--a-simulated-frontend-checkout-that-knowingly-violates-the-order-state-authority-model) | A simulated frontend checkout that knowingly violates the order-state authority model | Accepted |
 | [0012](#adr-0012--contract-foundation-envelope-metadata-versioning-and-a-fourth-contracts-family) | Contract foundation: envelope, metadata, versioning, and a fourth contracts family | Accepted |
 | [0013](#adr-0013--nestjs-commerce-api-foundation-toolchain-validation-error-model-and-boundary) | NestJS commerce-api foundation: toolchain, validation, error model, and boundary | Accepted |
+| [0014](#adr-0014--menu-domain-in-memory-repository-a-new-api-contracts-package-and-a-shared-domain-error-base) | Menu domain: in-memory repository, a new `api-contracts` package, and a shared domain-error base | Accepted |
+| [0015](#adr-0015--cart-domain-server-resolved-identity-live-menu-pricing-in-memory-storage-with-optimistic-versioning) | Cart domain: server-resolved identity, live menu pricing, in-memory storage with optimistic versioning | Accepted |
 
 ---
 
@@ -141,12 +143,15 @@ Zod (authored)  →  JSON Schema (generated)  →  Pydantic (generated)
 
 ## ADR-0004 — Simulate the database behind a repository interface
 
-**Status:** Accepted for Menu (Phase 7); still Proposed for Cart and Order ·
-**Date:** 2026-09-14 (updated 2026-09-25, Phase 7)
+**Status:** Accepted for Menu (Phase 7) and Cart (Phase 8); still Proposed
+for Order · **Date:** 2026-09-14 (updated 2026-09-25, Phases 7 and 8)
 
 Phase 7 adopted this decision for the Menu domain specifically — see
-ADR-0014. Which storage Cart and Order use is not decided by that adoption;
-this ADR remains `Proposed` for both until their own phases decide it.
+ADR-0014. Phase 8 adopted it for Cart — see ADR-0015, which also answers
+this ADR's stated risk (below) for a domain that writes: the repository
+port itself carries an optimistic version check, so the in-memory adapter
+cannot assume an atomicity a database would not give it for free. Order
+still decides its own storage; this ADR remains `Proposed` for it.
 
 ### Context
 
@@ -852,3 +857,84 @@ the same convention Phase 6 established.
   should be able to name.
 
 ---
+
+## ADR-0015 — Cart domain: server-resolved identity, live menu pricing, in-memory storage with optimistic versioning
+
+**Status:** Accepted · **Date:** 2026-09-25 (Phase 8) · **Decisions:**
+`docs/features/phase-8-cart-domain/plan.md` §33, OD1–OD14, approved as
+recommended
+
+### Context
+
+Cart is `commerce-api`'s second domain and its first with writes
+(`system-architecture.md` §5 makes it authoritative for cart contents,
+quantities, prices and totals). Four things had to be decided before it
+could exist, and the Order domain inherits all four: whose cart a request
+acts on when there is no authentication, whether a cart line's price is
+live or snapshotted, where cart state lives, and what stops two concurrent
+writes from losing one of them. Phase 5 had already fixed the intent
+vocabulary (`AddItemToCart`, `SetCartItemQuantity`, `RemoveItemFromCart`,
+with no `cartId` — D13) and declined `ClearCart` as a user-facing feature
+(D7, ADR-0011).
+
+### Decision
+
+1. **Identity is server-resolved, never client-supplied.** An abstract
+   `CartOwnerResolver` port decides the owner; the Phase 8 adapter returns
+   one fixed owner (`"local-dev-owner"`) because the system is single-user.
+   No cart id or owner id is read from any path, body, query, or header.
+   An unauthenticated client-supplied id (an `X-Cart-Session-Id` header was
+   the alternative considered) would be a guessable bearer token that
+   looks like isolation without being it.
+2. **Prices are live, not snapshotted.** A cart stores only `itemId` and
+   `quantity`; every response is re-priced from the Menu's current values
+   by one pure function, `priceCart`. Price commitment — and so historical
+   pricing and what payment verifies against — belongs to the Order
+   domain, which snapshots unit prices at placement. `priceCart` is the
+   seam a future pricing/promotions component replaces.
+3. **Storage is in-memory** (`InMemoryCartRepository`, a `Map` keyed by
+   owner) behind an abstract `CartRepository` with whole-aggregate
+   `findByOwner` / `save` only. Carts are lost on restart.
+4. **Concurrency is optimistic.** Each `Cart` carries a `version`; `save`
+   accepts a cart only if the stored version is exactly one behind, and
+   otherwise throws `CartVersionConflictError` (409 `CART_CONFLICT`). The
+   check is part of the port's contract — a database adapter implements it
+   as `UPDATE … WHERE version = ?` — and is internal only: no `ETag` or
+   `If-Match` on the wire yet.
+5. **Cart reads Menu through its own port.** `CartCatalog` (Cart-owned,
+   four fields: id, name, price, availability) is answered by
+   `MenuCatalogAdapter`, which calls a new, additive
+   `MenuService.findItemById`. Cart never imports Menu's domain types,
+   repository, or seed.
+6. **Clearing has no route and no intent.** `CartService.clearCart` exists
+   and is tested, for the Order phase to call; `DELETE /v1/cart` is not
+   served. Phase 5 D7 and ADR-0011 stand unchanged.
+
+### Consequences
+
+- **The authentication phase changes one binding** (`CartOwnerResolver`
+  in `CartModule`), not the domain, service, or repository — but until
+  then every caller shares one cart, and any local process can mutate it
+  (`system-architecture.md` §8 gap 4, unchanged).
+- **A price change reaches every open cart immediately.** That is the
+  intended behaviour; what a customer is actually charged is fixed only
+  when Order snapshots it.
+- **`POST /v1/cart/items` is not idempotent.** It is a delta, so a retried
+  add double-counts. No idempotency-key store exists because key scope,
+  retention, and conflict semantics are still undesigned
+  (`system-architecture.md` §8 gap 3) — accepting a key and ignoring it
+  would be worse than not accepting one. `PATCH` is idempotent by being an
+  absolute set; a retried `DELETE` returns 404 `CART_ITEM_NOT_FOUND`.
+  Nothing retries yet; the first retrying caller must resolve this.
+- **HTTP 409 is now used** — for a concurrency conflict — having been
+  reserved in `docs/api/commerce-api.md` §6 for "a future idempotency
+  conflict". The reservation is widened to "a conflict", not replaced.
+- **A line whose item later becomes unavailable** stays in the cart,
+  flagged `available: false` and still counted in the subtotal; a line
+  whose item leaves the menu entirely is omitted from the priced view.
+  Neither is reachable while the menu seed is static; refusing to place
+  such an order is the Order domain's decision.
+- **Wire shapes live in `@contracts/api-contracts`** (`cart.ts`, three
+  committed JSON Schema artifacts including the two request bodies, for a
+  future Python caller). A test proves each adopted intent projects onto
+  them field-for-field, sharing the same `@contracts/common` validators.

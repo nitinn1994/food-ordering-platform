@@ -17,6 +17,15 @@ export const API_ERROR_CODES = {
   // arrive with the service that owns them" rule @contracts/common's
   // errors.ts states.
   MENU_ITEM_NOT_FOUND: "MENU_ITEM_NOT_FOUND",
+  // The Cart domain's own codes (modules/cart/domain/cart.errors.ts). An
+  // unknown item on add reuses MENU_ITEM_NOT_FOUND above rather than
+  // minting a cart-specific twin (docs/features/phase-8-cart-domain/plan.md
+  // §18, OD13) — a caller branches on one code for "no such item" wherever
+  // it surfaces.
+  MENU_ITEM_UNAVAILABLE: "MENU_ITEM_UNAVAILABLE",
+  CART_ITEM_NOT_FOUND: "CART_ITEM_NOT_FOUND",
+  CART_ITEM_QUANTITY_LIMIT_EXCEEDED: "CART_ITEM_QUANTITY_LIMIT_EXCEEDED",
+  CART_CONFLICT: "CART_CONFLICT",
   // Fallback only, for a Nest HttpException status this filter has no
   // explicit mapping for. Nothing in this phase throws one — see
   // all-exceptions.filter.ts's STATUS_TO_CODE map, which is where the real
