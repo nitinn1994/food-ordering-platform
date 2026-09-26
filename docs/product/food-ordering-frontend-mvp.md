@@ -587,3 +587,22 @@ updates.
 one shared cart), order status changes, delivery, and everything on the
 AI/voice/infra list.
 
+## 18. Phase 16 additions
+
+Voice input and spoken replies (ADR-0023, which supersedes ADR-0007's "no
+voice surface" in §4):
+
+- **Tap the microphone and speak.** What was heard appears in the chat as
+  the customer's line. The request is exactly the one typing it would send,
+  so the same assistant, cart changes and on-screen changes follow.
+- **The reply is shown, then spoken.** Pressing the microphone while it
+  plays stops it and listens again. "Stop speaking" silences it.
+- **The customer is told before the first use** that the browser's speech
+  services may send their audio, and the replies' text, to the services'
+  provider. The microphone is only requested on that first press.
+- **Voice is never required.** Without browser support, a one-line hint
+  points to the text box, and every error message offers typing instead.
+
+**Still out of scope**, unchanged: a speech provider of our own, spoken
+confirmation for orders (there is no voice-reachable order action),
+languages other than English, and everything else on the AI/infra list.

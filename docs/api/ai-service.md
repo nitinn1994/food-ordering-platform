@@ -341,4 +341,5 @@ ready for yet (ADR-0019).
 
 A real model provider, conversation memory, business-intent envelopes,
 order tools, retries, streaming (turns are one synchronous request,
-ADR-0022), authentication, rate limiting and CORS.
+ADR-0022; voice in `apps/web` reuses the same request unchanged, ADR-0023),
+authentication, rate limiting and CORS.

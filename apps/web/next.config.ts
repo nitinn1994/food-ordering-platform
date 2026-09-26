@@ -27,6 +27,19 @@ const aiServiceUrl = (
 ).replace(/\/+$/, "");
 
 const nextConfig: NextConfig = {
+  // Only this origin may use the microphone — never an embedded frame
+  // (docs/features/phase-16-voice-interaction/review-report.md finding 5c).
+  // Voice input asks for it only on the customer's press (ADR-0023); this
+  // stops any third-party frame the page might one day embed from asking at
+  // all. Every route, so the header is present wherever voice can render.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [{ key: "Permissions-Policy", value: "microphone=(self)" }],
+      },
+    ];
+  },
   // Same-origin proxy to commerce-api (plan.md OD1): the browser calls
   // /api/commerce/v1/*, so commerce-api needs no CORS and its URL never
   // reaches the browser. Only /v1 is forwarded — not /health or anything

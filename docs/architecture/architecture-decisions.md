@@ -25,7 +25,7 @@ made, and what they cost.
 | [0004](#adr-0004--simulate-the-database-behind-a-repository-interface) | Simulate the database behind a repository interface | Superseded by ADR-0017 (runtime storage); in-memory adapters kept as test adapters |
 | [0005](#adr-0005--refetch-after-mutation-for-frontend-freshness) | Refetch-after-mutation for frontend freshness | Accepted (Phase 11) |
 | [0006](#adr-0006--jest-for-typescript-pytest-for-python) | Jest for TypeScript, pytest for Python | Proposed |
-| [0007](#adr-0007--defer-voice-entirely-rather-than-stub-a-provider) | Defer voice entirely rather than stub a provider | Proposed |
+| [0007](#adr-0007--defer-voice-entirely-rather-than-stub-a-provider) | Defer voice entirely rather than stub a provider | Superseded by ADR-0023 (Phase 16) |
 | [0008](#adr-0008--vitest-for-typescript-testing-library--jsdom-for-components) | Vitest for TypeScript, Testing Library + jsdom for components | Accepted |
 | [0009](#adr-0009--single-restaurant-scope-no-restaurant-entity) | Single-restaurant scope — no `Restaurant` entity | Accepted |
 | [0010](#adr-0010--a-real-cart-route-with-providers-hoisted-to-the-root-layout) | A real `/cart` route, with providers hoisted to the root layout | Accepted |
@@ -41,6 +41,7 @@ made, and what they cost.
 | [0020](#adr-0020--langgraph-agent-foundation-a-linear-graph-on-a-simulated-model-an-agent-service-and-refused-tracing) | LangGraph agent foundation: a linear graph on a simulated model, an agent service, and refused tracing | Accepted |
 | [0021](#adr-0021--ai-tool-calling-an-allowlisted-tool-registry-one-commerce-api-client-and-generated-contract-models) | AI tool calling: an allowlisted tool registry, one Commerce API client, and generated contract models | Accepted — decision 11 (non-tool-calling simulated model) and the intents part of decision 12 superseded by ADR-0022 |
 | [0022](#adr-0022--ai--ui-commands-presentation-tools-business-intent-validation-and-a-synchronous-turn-to-appsweb) | AI → UI commands: presentation tools, business-intent validation, and a synchronous turn to `apps/web` | Accepted |
+| [0023](#adr-0023--voice-browser-speech-as-an-adapter-on-the-existing-text-turn) | Voice: browser speech as an adapter on the existing text turn | Accepted |
 
 ---
 
@@ -268,7 +269,7 @@ decision actually in force.
 
 ## ADR-0007 — Defer voice entirely rather than stub a provider
 
-**Status:** Proposed · **Date:** 2026-09-14
+**Status:** Superseded by ADR-0023 (Phase 16, 2026-09-27) · **Date:** 2026-09-14
 
 ### Context
 
@@ -1894,3 +1895,112 @@ Both halves of the AI → UI path existed, but they were not connected.
   source and one committed JSON Schema, drift-tested on both sides.
 - **The quality of a real model's command selection is not measured yet.**
   Every path is covered by scripted and simulated models.
+
+---
+
+## ADR-0023 — Voice: browser speech as an adapter on the existing text turn
+
+**Status:** Accepted · **Date:** 2026-09-27 (Phase 16) · **Decisions:**
+`docs/features/phase-16-voice-interaction/plan.md` §30, OD1–OD12, approved
+as recommended · Supersedes ADR-0007
+
+### Context
+
+ADR-0007 deferred voice because its constraints (streaming, latency,
+interruption, partial transcripts) were unknown, and an interface guessed
+before a real agent turn existed "would almost certainly be wrong".
+Phases 12–15 built that turn: `POST /api/ai/v1/agent/turns {message}` →
+`{reply, uiCommands?}`, synchronous, with a fixed order in `apps/web`
+(re-read the cart, show the reply, apply the commands; ADR-0022).
+
+`CLAUDE.md` still rules out a real voice provider. A server-side speech
+endpoint could therefore only be a stub that ignores the audio, which is
+the interface ADR-0007 warned against.
+
+### Decision
+
+1. **Voice is an input/output adapter on the existing text turn** (OD1).
+   The browser turns speech into a transcript, the transcript is the turn's
+   `message`, and the turn's `reply` is spoken back. There is no voice
+   agent, voice node, voice tool, voice intent, voice UI-command mechanism,
+   or voice route. ai-service, commerce-api and `packages/contracts` are
+   unchanged, and the turn contract gains no `inputMode` field (OD8).
+2. **One turn path for both channels.** `ChatInput`'s turn logic moved,
+   unchanged, into `useAgentTurn` (`apps/web/src/lib/agent/`). Text and
+   voice both call its `submit`, which guards one turn in flight across
+   both.
+3. **Speech is the browser's own**, behind two interfaces
+   (`apps/web/src/lib/voice/types.ts`):
+   - `SpeechToText`, over the Web Speech API `SpeechRecognition`: one
+     utterance per press, interim results for display only, and only the
+     final transcript is submitted.
+   - `TextToSpeech`, over `speechSynthesis`: the whole reply, preferring an
+     on-device (`localService`) voice.
+
+   The provider-specific code is in `browserSpeechToText.ts` and
+   `browserTextToSpeech.ts` only. A later server-side or third-party
+   provider is one new adapter behind the same interface.
+4. **The browser's speech engine is accepted, with a disclosure** (OD2).
+   Chromium's recognizer may send audio to its vendor's service. This
+   repository integrates no provider, holds no key and never sees the
+   audio. The user is told, before the first press of the microphone, that
+   "Voice input and spoken replies use your browser's speech services, which
+   may send your audio and the replies' text to their provider." A remote
+   synthesis voice can receive the reply text. The microphone permission is
+   requested only by that press, and `Permissions-Policy: microphone=(self)`
+   on every page keeps any embedded frame from asking.
+5. **Turn detection is tap-to-talk** (OD3). The browser's end-of-speech
+   detection ends the utterance, a second press stops early, and a 15 s cap
+   stops it otherwise. The final transcript is sent automatically (OD4).
+   It appears in the chat transcript as the customer's line.
+6. **Only replies to voice turns are spoken** (OD5), and only after the
+   reply is on screen and its UI commands have rendered. Failure copy is
+   never spoken.
+7. **Interruption is manual** (OD6, OD7). Pressing the microphone while a
+   reply plays cancels it and listens (barge-in), and "Stop speaking"
+   cancels it. "Stop" during processing never aborts the HTTP turn, which
+   may already have changed the cart: the reply is shown and its commands
+   applied, but it is not spoken. Every recognizer event is tagged with its
+   recognition id and every reply with its turn id, and a state machine
+   (`voiceReducer.ts`) ignores stale ones.
+8. **The voice session is client-only presentation state**: idle,
+   listening, processing, speaking or error. It is never persisted, has no
+   server session or conversation id, and never holds commerce state.
+9. **No voice-specific confirmation** (OD12). No voice-reachable action
+   needs one: there is no order or clear-cart tool, and checkout is a form.
+10. **A structural boundary.** ESLint forbids `apps/web/src/lib/voice/**`
+    from importing `lib/state`, `lib/api`, `lib/commands`, `lib/agent` and
+    `@contracts/*`. The caller passes the contract's message limit in.
+11. **Unsupported browsers** get no microphone button and a one-line "type
+    instead" hint (OD9). The microphone button's name carries its state
+    ("Start voice input" / "Stop listening"), with no `aria-pressed`. Text chat is unaffected. The language is fixed at
+    `en-US` (OD10).
+
+### Rules this sets for later phases
+
+- **A new speech provider** is a new `SpeechToText`/`TextToSpeech`
+  adapter. If it needs audio to reach a server, that endpoint is its own
+  phase, with its own retention, logging and security review. Nothing in
+  the agent changes.
+- **Confirmation for an order or destructive tool** belongs to the phase
+  that adds the tool, in the agent/commerce layer, for text and voice
+  alike. It never belongs in the voice layer.
+- **Streaming** (of the LLM, TTS or UI commands) keeps ADR-0022's rule: no
+  UI command before the writes it depends on have resolved. Speech never
+  runs ahead of the screen.
+
+### Consequences
+
+- **Voice works in Chromium-based browsers and Safari**, as far as their
+  `SpeechRecognition` support goes. Firefox has none and shows the hint.
+  Phase 16's manual run records what was actually checked.
+- **Audio may leave the device through the browser**, outside this
+  repository's control. It is disclosed, but not prevented. Our code never
+  handles, logs or stores audio, and logs no transcript: ai-service still
+  logs only `message_chars`.
+- **A mishearing acts like a typo.** It can change the cart through the
+  existing, bounded tools, and the transcript line and the re-read cart
+  make it visible. Nothing can place an order.
+- **The speech engines are not exercised in CI.** jsdom has neither API, so
+  the adapters are tested against fakes. Their real behaviour is covered by
+  the manual checks.

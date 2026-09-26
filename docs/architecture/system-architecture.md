@@ -74,6 +74,17 @@ at runtime sees only already-normalized URLs (ADR-0022, security review S1). It 
 per turn, with no streaming. The response carries the reply and, optionally,
 a batch of UI commands, both defined in `@contracts/ui-commands`.
 
+**Voice, as built (Phase 16, ADR-0023).** Voice uses the same turn as text.
+The browser's own speech recognition turns the customer's speech into the
+turn's `message`, and the browser's speech synthesis speaks the `reply` once
+it is on screen and its UI commands have been applied. No audio reaches
+`apps/web`'s server, ai-service or commerce-api. There is no voice route,
+agent, tool, intent or UI-command mechanism, and the request is
+byte-for-byte the one typing the same words would send. In `apps/web`, the
+code that handles speech (`src/lib/voice/`) is barred by ESLint from
+reaching cart state, the API client, the dispatcher, the agent turn and the
+contracts.
+
 ## 3. Request walkthrough
 
 A conversational turn, end to end:
@@ -282,7 +293,9 @@ widened.
 ## 7. Deliberately absent
 
 Per `CLAUDE.md`'s initial scope, and not by oversight: real AI model
-integration, real voice provider, real payments, production authentication,
+integration, real voice provider (since Phase 16 voice uses the browser's
+own speech engine, and this repository integrates no provider; ADR-0023),
+real payments, production authentication,
 Kubernetes, production infrastructure, distributed tracing, multi-region.
 
 `infrastructure/kubernetes/` exists as an empty directory, and

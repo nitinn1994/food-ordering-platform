@@ -111,7 +111,7 @@ migration): `pnpm --filter commerce-api db:up`, then `db:migrate`, then
 | Install | `pnpm install` | Verified |
 | Type check (all packages) | `pnpm turbo run typecheck` | Verified |
 | Lint (all packages) | `pnpm turbo run lint` | Verified |
-| Test (all packages) | `pnpm turbo run test` | Verified (Phase 15) — 939 tests (44 `common` + 69 `ui-commands` + 31 `agent-intents` + 114 `api-contracts` + 364 `web` + 317 `commerce-api`). Phase 15 added 36 `ui-commands` tests (the agent-turn contract) and web tests for the chat, the agent service, batch dispatch and the ai-service proxy. The previous figures in this row (815: 43 `common`, 277 `web`) were not updated after Phase 11, so a per-phase delta for those two packages is not recorded here. Phase 11 note: every deleted or rewritten web test is listed in `docs/features/phase-11-web-commerce-integration/`. `web` tests use a stubbed `fetch` and need no running API. Phase 10 note: Needs **no** database: `*.db.test.ts` files are excluded, and the HTTP e2e suites run on the in-memory test adapters. Every package except `commerce-api` is unchanged in count and outcome; `commerce-api` gained 38 tests (the 279 pre-existing ones still pass — some had wiring-only changes, listed in `docs/features/phase-10-database-persistence/plan.md`). |
+| Test (all packages) | `pnpm turbo run test` | Verified (Phase 16) — 1059 tests (44 `common` + 69 `ui-commands` + 31 `agent-intents` + 114 `api-contracts` + 484 `web` + 317 `commerce-api`). Phase 16 added 146 `web` tests (the shared turn, the voice adapters, the voice state machine and session, and the voice control inside the chat); every other package is unchanged. The Phase 15 figure for `web` (364) was wrong: re-run on the unchanged Phase 15 code at the start of Phase 16, `web` had 338 tests. Phase 15 added 36 `ui-commands` tests (the agent-turn contract) and web tests for the chat, the agent service, batch dispatch and the ai-service proxy. The previous figures in this row (815: 43 `common`, 277 `web`) were not updated after Phase 11, so a per-phase delta for those two packages is not recorded here. Phase 11 note: every deleted or rewritten web test is listed in `docs/features/phase-11-web-commerce-integration/`. `web` tests use a stubbed `fetch` and need no running API. Phase 10 note: Needs **no** database: `*.db.test.ts` files are excluded, and the HTTP e2e suites run on the in-memory test adapters. Every package except `commerce-api` is unchanged in count and outcome; `commerce-api` gained 38 tests (the 279 pre-existing ones still pass — some had wiring-only changes, listed in `docs/features/phase-10-database-persistence/plan.md`). |
 | Test against PostgreSQL | `pnpm --filter commerce-api test:db` | Verified — 111 tests (migrations, seed, the three Postgres repositories, the transaction runner, order placement, and a full-stack HTTP suite) against the Compose database `commerce_test`. Resets that database's schema and migrates it first; refuses any database whose name does not end in `_test`. With no database reachable it **fails** with a message naming `db:up` — it never skips. |
 | Start / stop the local database | `pnpm --filter commerce-api db:up` / `db:down` | Verified — `docker compose` with `infrastructure/docker/compose.yaml`: PostgreSQL 18, bound to 127.0.0.1:5432, databases `commerce` and `commerce_test`, data in the `commerce-pgdata` volume. `db:down` keeps the data; `docker compose -f infrastructure/docker/compose.yaml down -v` destroys it |
 | Migrate the database | `pnpm --filter commerce-api db:migrate` / `db:migrate:down` | Verified — to latest / one step down, against `DATABASE_URL`; a second run is a no-op ("Already up to date." / "Nothing to revert.") |
@@ -198,6 +198,15 @@ None of the three needs the others in order to start:
 Since Phase 15 `apps/web`'s chat calls `apps/ai-service` (`POST
 /v1/agent/turns`, through `/api/ai/v1/agent/turns`). `simulate.ts` is gone.
 
+Since Phase 16 the chat also takes voice (ADR-0023), which uses the browser's
+own speech recognition and synthesis. It needs no extra service, key or
+setting. Open `http://127.0.0.1:3000` (loopback counts as a secure context
+for the microphone) in a Chromium-based browser, press **Start voice
+input**, allow the microphone, and say "show me the desserts". Firefox has no
+speech recognition and shows a "type instead" hint. Voice turns go through
+the same `/api/ai/v1/agent/turns` as typed ones, so ai-service must be
+running for a reply.
+
 `NOT_CONFIGURED` means the project has no such check set up. It does not mean
 passing, and it does not mean failing. See `.claude/rules/validation.md` for
 the full status vocabulary.
@@ -229,8 +238,17 @@ apps/
                               OrderConfirmation, CheckoutAnnouncer
     src/components/nav/      SiteNav (Menu / Cart (n), aria-current)
     src/components/chat/     ChatInput, ChatTranscript
+    src/components/voice/    VoiceControl (microphone, Stop / Stop speaking,
+                              live status; Phase 16)
     src/components/dev/      CommandLogPanel (development-only)
-    src/lib/agent/           agentService.ts (the chat's ai-service turn)
+    src/lib/agent/           agentService.ts (the chat's ai-service turn),
+                              useAgentTurn.ts (the one turn text and voice
+                              share)
+    src/lib/voice/           speech ⇄ text only (Phase 16): types.ts, the two
+                              browser adapters, voiceReducer.ts,
+                              useVoiceSession.ts, voiceMessages.ts; ESLint
+                              keeps it away from state, api, commands, agent
+                              and contracts
     src/lib/commands/        dispatch.ts (single command + turn batch)
     src/lib/state/           uiStore.tsx (durable), cartStore.tsx (temporary
                               — lines + mutations only, no pricing; gained

@@ -1,7 +1,6 @@
-export type ChatMessage = {
-  role: "user" | "assistant";
-  text: string;
-};
+import type { ChatMessage } from "../../lib/agent/useAgentTurn";
+
+export type { ChatMessage };
 
 export function ChatTranscript({ messages }: { messages: ChatMessage[] }) {
   if (messages.length === 0) {

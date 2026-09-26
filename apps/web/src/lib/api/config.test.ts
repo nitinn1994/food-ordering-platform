@@ -44,6 +44,28 @@ describe("resolveApiBase", () => {
   });
 });
 
+describe("next.config headers", () => {
+  afterEach(() => {
+    vi.resetModules();
+  });
+
+  // Phase 16 review finding 5c: the microphone for this origin only, on
+  // every route.
+  it("limits the microphone to this origin on every route", async () => {
+    vi.resetModules();
+    const { default: nextConfig } = await import("../../../next.config");
+
+    const headers = await nextConfig.headers?.();
+
+    expect(headers).toEqual([
+      {
+        source: "/:path*",
+        headers: [{ key: "Permissions-Policy", value: "microphone=(self)" }],
+      },
+    ]);
+  });
+});
+
 describe("next.config rewrites", () => {
   afterEach(() => {
     vi.unstubAllEnvs();

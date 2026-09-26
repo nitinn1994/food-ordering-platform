@@ -155,4 +155,64 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // The voice boundary (docs/features/phase-16-voice-interaction/plan.md
+    // §7, §15, AC5): lib/voice turns speech into strings and strings into
+    // speech, and nothing else. It must never reach commerce or cart state,
+    // the API client, the UI-command dispatcher, the agent turn, or any
+    // contract — voice is an adapter on the existing turn, not a second path
+    // to ai-service or commerce-api. Relative imports are matched as siblings
+    // ("../state/…"), from a subfolder of lib/voice ("../../state/…"), and
+    // through lib/ ("**/lib/state/…"). apps/web has no path alias, so these
+    // are the only ways in (review finding 4).
+    //
+    // Flat config does not merge rule options: for these files this block's
+    // no-restricted-imports *replaces* the apps/web one above, so the
+    // agent-intents ban is repeated verbatim.
+    files: ["apps/web/src/lib/voice/**/*.ts", "apps/web/src/lib/voice/**/*.tsx"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@contracts/agent-intents",
+              message:
+                "apps/web must never import agent-intents — business intents " +
+                "are executed by commerce-api, not rendered by the frontend " +
+                "(system-architecture.md §4.4, ADR-0012).",
+            },
+          ],
+          patterns: [
+            {
+              group: [
+                "../state/*",
+                "../api/*",
+                "../commands/*",
+                "../agent/*",
+                "../../state/*",
+                "../../api/*",
+                "../../commands/*",
+                "../../agent/*",
+                "**/lib/state/*",
+                "**/lib/api/*",
+                "**/lib/commands/*",
+                "**/lib/agent/*",
+              ],
+              message:
+                "lib/voice must not reach cart/UI state, the API client, the " +
+                "command dispatcher or the agent turn — it only converts " +
+                "between speech and text (Phase 16 plan.md §7, AC5).",
+            },
+            {
+              group: ["@contracts/*"],
+              message:
+                "lib/voice must not import contracts — it sees only strings; " +
+                "callers pass any contract limit in (Phase 16 plan.md §7, AC5).",
+            },
+          ],
+        },
+      ],
+    },
+  },
 );
