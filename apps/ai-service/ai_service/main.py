@@ -29,6 +29,10 @@ from ai_service.core.request_limits import RequestLimitsMiddleware
 from ai_service.llm import build_chat_model
 from ai_service.tools.registry import build_tool_registry
 from ai_service.tools.service import ToolService
+from ai_service.ui_commands import (
+    PresentationToolService,
+    build_presentation_registry,
+)
 
 
 def create_app(
@@ -53,8 +57,9 @@ def create_app(
     if agent_service is None:
         http_client = http_client or build_commerce_http_client(settings)
         tool_service = ToolService(CommerceClient(http_client), build_tool_registry())
+        presentation_service = PresentationToolService(build_presentation_registry())
         agent_service = AgentService(
-            build_agent_graph(build_chat_model(), tool_service)
+            build_agent_graph(build_chat_model(), tool_service, presentation_service)
         )
 
     @asynccontextmanager

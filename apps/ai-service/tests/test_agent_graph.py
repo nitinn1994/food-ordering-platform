@@ -15,13 +15,19 @@ from ai_service.agents.graph import (
 )
 from ai_service.agents.nodes import MAX_TOOL_ROUNDS, AgentOutputError
 from ai_service.llm.simulated import SIMULATED_REPLY, SimulatedChatModel
-from tests.commerce_fakes import FakeCommerce
+from ai_service.ui_commands import (
+    PresentationToolService,
+    build_presentation_registry,
+)
+from tests.commerce_fakes import FakeCommerce, presentation_service
 from tests.fakes import empty_reply_model
 
 
 @pytest.fixture
 def graph() -> AgentGraph:
-    return build_agent_graph(SimulatedChatModel(), FakeCommerce().tool_service())
+    return build_agent_graph(
+        SimulatedChatModel(), FakeCommerce().tool_service(), presentation_service()
+    )
 
 
 def run(graph: AgentGraph, recursion_limit: int = RECURSION_LIMIT) -> dict[str, Any]:
@@ -86,7 +92,22 @@ def test_recursion_limit_is_enforced(graph: AgentGraph) -> None:
 
 
 def test_node_failure_propagates_out_of_the_graph() -> None:
-    graph = build_agent_graph(empty_reply_model(), FakeCommerce().tool_service())
+    graph = build_agent_graph(
+        empty_reply_model(), FakeCommerce().tool_service(), presentation_service()
+    )
 
     with pytest.raises(AgentOutputError):
         run(graph)
+
+
+def test_a_name_in_both_registries_refuses_to_build() -> None:
+    # Phase 15 AC8: execute_tools routes by name, so a presentation tool that
+    # shadowed a Commerce tool would silently take its calls.
+    shadowing = PresentationToolService(
+        {"get_cart": build_presentation_registry()["open_cart_panel"]}
+    )
+
+    with pytest.raises(ValueError, match="get_cart"):
+        build_agent_graph(
+            SimulatedChatModel(), FakeCommerce().tool_service(), shadowing
+        )

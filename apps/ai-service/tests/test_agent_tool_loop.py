@@ -42,6 +42,14 @@ TOOL_NAMES = [
     "set_cart_item_quantity",
     "remove_cart_item",
 ]
+# Phase 15: bound after the Commerce tools, from their own registry.
+PRESENTATION_TOOL_NAMES = [
+    "show_menu_category",
+    "highlight_item",
+    "open_cart_panel",
+    "show_item_detail",
+    "search_menu",
+]
 SENTINEL_MESSAGE = "SENTINEL_TURN_MESSAGE_5d0e"
 SENTINEL_ITEM = "sentinel-item-5d0e"
 
@@ -242,14 +250,17 @@ def test_the_longest_allowed_turn_fits_the_recursion_limit(
     assert RECURSION_LIMIT >= 2 * MAX_TOOL_ROUNDS + 2
 
 
-def test_the_model_is_bound_to_the_five_tools_and_prompted(
+def test_the_model_is_bound_to_both_registries_and_prompted(
     agent_client: AgentClientFactory,
 ) -> None:
     model = SequencedChatModel(replies=[AIMessage("Hello!")])
 
     assert _turn(agent_client, model, FakeCommerce()).status_code == 200
 
-    assert [t["function"]["name"] for t in model.bound_tools] == TOOL_NAMES
+    assert [t["function"]["name"] for t in model.bound_tools] == [
+        *TOOL_NAMES,
+        *PRESENTATION_TOOL_NAMES,
+    ]
     first = model.received[0][0]
     assert isinstance(first, SystemMessage)
     assert first.content == SYSTEM_PROMPT

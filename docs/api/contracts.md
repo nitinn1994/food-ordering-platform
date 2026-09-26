@@ -12,17 +12,21 @@ Phase 9 added a third, `order.ts` (`createOrderRequestSchema`,
 `orderParamsSchema`, `orderResponseSchema`, with `customerDetailsSchema`,
 `orderIdSchema` and `orderStatusSchema`), consumed by
 `apps/commerce-api/src/modules/order`.
+Phase 15 added the agent turn to `ui-commands` (`agentTurn.ts`, §6.1), the
+first contract between `apps/web` and ai-service, and gave both vocabularies
+their first Python consumers, generated from their committed JSON Schema.
 This document's own scope is still the two intent/command vocabularies
-below (§1–§9); `api-contracts`' schemas are documented in
+below (§1–§9) and that turn; `api-contracts`' schemas are documented in
 [`docs/api/commerce-api.md`](./commerce-api.md) §11, §12 and §13 instead,
 next to the routes that use them.
 **Related:** [`system-architecture.md`](../architecture/system-architecture.md) §6 ·
 [`architecture-decisions.md`](../architecture/architecture-decisions.md)
-ADR-0003, ADR-0012, ADR-0014, ADR-0015, ADR-0016 ·
+ADR-0003, ADR-0012, ADR-0014, ADR-0015, ADR-0016, ADR-0022 ·
 [`docs/features/phase-5-contract-foundation/`](../features/phase-5-contract-foundation/),
 [`docs/features/phase-7-menu-domain/`](../features/phase-7-menu-domain/),
 [`docs/features/phase-8-cart-domain/`](../features/phase-8-cart-domain/),
-[`docs/features/phase-9-order-domain/`](../features/phase-9-order-domain/)
+[`docs/features/phase-9-order-domain/`](../features/phase-9-order-domain/),
+[`docs/features/phase-15-ai-ui-commands/`](../features/phase-15-ai-ui-commands/)
 
 This document is a working reference for the contract layer: how to name a
 new field, what a valid message actually looks like on the wire, and which
@@ -214,11 +218,61 @@ this mapping for every member of `AGENT_INTENT_TYPES` (an intent added
 without a route fails it). It also asserts that the Cart request schemas
 share the intents' exact `itemId` and `quantity` validators.
 
+**Since Phase 15, ai-service validates every write against these intents**
+(ADR-0022). Each of its three write tools is bound to exactly one intent
+(`apps/ai-service/ai_service/tools/intents.py`): `add_cart_item` →
+`AddItemToCart`, `set_cart_item_quantity` → `SetCartItemQuantity`,
+`remove_cart_item` → `RemoveItemFromCart`. A write's arguments are validated
+as that intent, using Pydantic generated from `agent-intent.v1.json`, before
+the route above is called. The envelope is still not sent.
+
 ## 6. Adopted UI commands
 
 Unchanged in shape since Phase 2, now strict and (for `SearchMenu`) bounded:
 `ShowMenuCategory`, `HighlightItem`, `OpenCartPanel`, `ShowItemDetail`,
-`SearchMenu` (`packages/contracts/ui-commands/src/commands.ts`).
+`SearchMenu` (`packages/contracts/ui-commands/src/commands.ts`). Phase 15
+added none: each already maps to a working `apps/web` action, and the other
+candidates stay in §7.
+
+Since Phase 15 ai-service produces them for real: one presentation tool per
+command (`docs/api/ai-service.md` §3.3). `apps/web` applies them through
+`dispatch.ts`'s exhaustive `commandToUiAction`, in the order the agent issued
+them. None of the five can claim that a cart change succeeded.
+
+### 6.1 The agent turn (Phase 15)
+
+`packages/contracts/ui-commands/src/agentTurn.ts`, with committed JSON
+Schema `agent-turn-request.v1.json` and `agent-turn-response.v1.json`. It is
+the body of ai-service's `POST /v1/agent/turns`:
+
+| Schema | Shape |
+| --- | --- |
+| `agentTurnRequestSchema` | `{ message }`: 1–2000 characters, at least one non-whitespace |
+| `agentTurnResponseSchema` | `{ reply, uiCommands? }`: `reply` 1–4000 characters; `uiCommands` a `uiCommandBatchSchema` envelope, **omitted, never `null`**, when the turn produced no command |
+
+It lives in `ui-commands` because the response is the AI → web payload, so
+`commerce-api`'s existing ESLint ban on this package covers it too. There is
+deliberately no intent field: business intents never travel to the
+frontend.
+
+`parseAgentTurnResponse` validates at three levels, each failing only what
+it owns. It never throws:
+
+| Problem | Result |
+| --- | --- |
+| The outer object: an unknown key, or a missing, empty or over-long `reply` | The whole response is rejected |
+| The batch envelope: wrong `contractVersion`, no `correlationId`, a non-`Z` `issuedAt`, 0 or more than 10 commands | Every command is dropped; the reply is kept |
+| One command: unknown `type`, an extra key, a bad payload | Only that command is dropped (`parseBatch`) |
+
+Python: `apps/ai-service/scripts/generate_contracts.py` generates
+`ai_service/contracts/ui_commands.py` from the two turn schemas, and
+`agent_intents.py` from the `intent` subtree of `agent-intent.v1.json`. The
+unions come out as plain Python unions, because the JSON Schema `oneOf` has
+no `discriminator` keyword. Each branch has a literal `type` and forbids
+extra keys, so at most one branch can match. Tests prove this in both
+languages against the same fixtures. `issuedAt` is generated as a string
+carrying the contract's own `Z` pattern (the generator option
+`string+date-time=string`), not as a datetime.
 
 ## 7. Candidate register — considered, not adopted
 

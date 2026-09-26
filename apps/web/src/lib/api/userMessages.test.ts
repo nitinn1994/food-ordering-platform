@@ -12,7 +12,7 @@ function http(status: number, code?: string): ApiError {
 }
 
 describe("userMessageFor — by kind", () => {
-  it.each(["cart", "order"] as const)("network and timeout → unreachable (%s)", (context) => {
+  it.each(["cart", "order", "agent"] as const)("network and timeout → unreachable (%s)", (context) => {
     expect(userMessageFor(new ApiError({ kind: "network" }), context)).toBe(UNREACHABLE_MESSAGE);
     expect(userMessageFor(new ApiError({ kind: "timeout" }), context)).toBe(UNREACHABLE_MESSAGE);
   });
@@ -59,5 +59,25 @@ describe("userMessageFor — by code", () => {
     ["IDEMPOTENCY_KEY_REUSED", 409, "Please review your details and place the order again."],
   ])("order: %s", (code, status, expected) => {
     expect(userMessageFor(http(status, code), "order")).toBe(expected);
+  });
+});
+
+// Phase 15: a chat turn to ai-service.
+describe("userMessageFor — agent", () => {
+  it("AGENT_FAILED (500) → the server-error copy, never the backend message", () => {
+    const message = userMessageFor(http(500, "AGENT_FAILED"), "agent");
+    expect(message).toBe(SERVER_ERROR_MESSAGE);
+  });
+
+  it("a rejected message has its own copy", () => {
+    expect(userMessageFor(http(400, "INVALID_PAYLOAD"), "agent")).toBe(
+      "I couldn't read that message. Please try rephrasing it.",
+    );
+  });
+
+  it("any other refusal → the generic copy", () => {
+    expect(userMessageFor(http(413, "PAYLOAD_TOO_LARGE"), "agent")).toBe(
+      GENERIC_REJECTION_MESSAGE,
+    );
   });
 });

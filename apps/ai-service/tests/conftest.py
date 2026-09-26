@@ -15,7 +15,7 @@ from ai_service.config import TRACING_VARIABLES, Settings
 from ai_service.core.logging import configure_logging
 from ai_service.main import create_app
 from tests import fixtures_routes
-from tests.commerce_fakes import FakeCommerce
+from tests.commerce_fakes import FakeCommerce, presentation_service
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -68,7 +68,9 @@ def agent_client(settings: Settings) -> Iterator[AgentClientFactory]:
             fake = commerce or FakeCommerce()
             http = fake.http_client(settings)
             tool_service = fake.tool_service(http)
-            service = AgentService(build_agent_graph(model, tool_service))
+            service = AgentService(
+                build_agent_graph(model, tool_service, presentation_service())
+            )
             app = create_app(settings, agent_service=service, commerce_http_client=http)
             return stack.enter_context(TestClient(app))
 

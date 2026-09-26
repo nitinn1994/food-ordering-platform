@@ -51,7 +51,7 @@ same change. A scaffolding phase that leaves this file stale has not finished.
 
 | | |
 | --- | --- |
-| Applications | `apps/web` — Next.js, TypeScript, working; since Phase 11 its menu, cart and orders come from `commerce-api` through a same-origin proxy (ADR-0018). `apps/commerce-api` — NestJS, TypeScript, working (Phase 6 foundation + Phase 7 read-only Menu domain + Phase 8 Cart domain + Phase 9 Order domain + Phase 10 PostgreSQL persistence). `apps/ai-service` — Python 3.12 + FastAPI + LangGraph, working (Phase 12 foundation + Phase 13 agent foundation: `POST /v1/agent/turns` on a simulated model + Phase 14 Commerce API tools and client; no model provider, so no turn calls commerce-api yet; outside the pnpm workspace — ADR-0002, ADR-0019, ADR-0020, ADR-0021). |
+| Applications | `apps/web` — Next.js, TypeScript, working; since Phase 11 its menu, cart and orders come from `commerce-api` through a same-origin proxy (ADR-0018). `apps/commerce-api` — NestJS, TypeScript, working (Phase 6 foundation + Phase 7 read-only Menu domain + Phase 8 Cart domain + Phase 9 Order domain + Phase 10 PostgreSQL persistence). `apps/ai-service` — Python 3.12 + FastAPI + LangGraph, working (Phase 12 foundation + Phase 13 agent foundation: `POST /v1/agent/turns` on a simulated model + Phase 14 Commerce API tools and client + Phase 15 presentation tools returning UI commands and write tools validated as business intents; no model provider — the simulated keyword model calls commerce-api only for `add <item>`; outside the pnpm workspace — ADR-0002, ADR-0019, ADR-0020, ADR-0021, ADR-0022). Since Phase 15 `apps/web`'s chat calls ai-service through a same-origin proxy and applies its UI commands (ADR-0022). |
 | Shared packages | `packages/contracts/common`, `ui-commands`, `agent-intents`, `api-contracts` — Zod schemas, all working, each with committed generated JSON Schema. `api-contracts` gained its first producer in Phase 7 (`commerce-api`'s Menu domain) and its first request schemas in Phase 8 (Cart). |
 | Dependency manifests | Root `package.json` + `pnpm-workspace.yaml` (pnpm + Turborepo, ADR-0002); `apps/web/package.json`; `apps/commerce-api/package.json`; one `package.json` per `packages/contracts/*` package. `apps/ai-service/pyproject.toml` + committed `uv.lock` (uv; not a pnpm package — ADR-0019). |
 | Build tooling | Turborepo (`turbo.json`), TypeScript (`tsconfig.base.json`), ESLint flat config (`eslint.config.mjs`, enforcing `apps/web`'s `agent-intents` import restriction — ADR-0012 — and `apps/commerce-api`'s `ui-commands`/`apps/web` import restriction — ADR-0013), Vitest per package. Each contracts package also has a `build` script (`scripts/emit-schema.ts`) that generates its committed JSON Schema; `packages/contracts/tools/` holds a small Node module hook those scripts use, and only they use. `apps/commerce-api`'s own `build` is `vite build` (SSR mode) — a different mechanism, since it produces a runnable service, not a JSON Schema artifact (ADR-0013). |
@@ -73,8 +73,9 @@ Verified working with:
 ## Commands
 
 Run from the repository root unless noted. All verified passing as of
-2026-09-26 (Phase 11, sub-phase 11.5; the four `turbo` checks were run with
-`--force`, so no result was a turbo cache replay). Phase 11 added two
+2026-09-27 (Phase 15, sub-phase 15.5; the four `turbo` checks were run with
+`--force`, so no result was a turbo cache replay). Phase 15 added no
+dependency. Earlier, as of 2026-09-26 (Phase 11): Phase 11 added two
 workspace dependencies to `apps/web` (`@contracts/api-contracts`,
 `@contracts/common`) with `pnpm --filter web add` — no external package, and
 `pnpm install` itself was not re-run from clean.
@@ -91,6 +92,15 @@ guess in production). Both `next dev` and `next start` bind to `127.0.0.1`
 (`-H 127.0.0.1` in `apps/web/package.json`): the proxy makes the web app a
 door to commerce-api, which is itself loopback-only.
 
+**Running the chat against ai-service** (Phase 15): also start ai-service
+(below). The browser calls `apps/web`'s own `/api/ai/v1/agent/turns`, which
+Next.js rewrites to `AI_SERVICE_URL` (default `http://127.0.0.1:3002`; see
+`apps/web/.env.example`). That is the only path forwarded: any other
+`/api/ai/*` path is 404. Without ai-service, `apps/web` still works, and the
+chat answers every message with a fixed error. For `next build`,
+`AI_SERVICE_URL` must be set when **building**, like `COMMERCE_API_URL`.
+Typing `add <item>` in the chat changes the shared cart through ai-service.
+
 **First-time database setup** (once per machine, then after any new
 migration): `pnpm --filter commerce-api db:up`, then `db:migrate`, then
 `db:seed`. Copy `apps/commerce-api/.env.example` to `.env` first — `dev`,
@@ -101,14 +111,14 @@ migration): `pnpm --filter commerce-api db:up`, then `db:migrate`, then
 | Install | `pnpm install` | Verified |
 | Type check (all packages) | `pnpm turbo run typecheck` | Verified |
 | Lint (all packages) | `pnpm turbo run lint` | Verified |
-| Test (all packages) | `pnpm turbo run test` | Verified — 815 tests (43 `common` + 33 `ui-commands` + 31 `agent-intents` + 114 `api-contracts` + 277 `web` + 317 `commerce-api`), up from 712 before Phase 11 (only `web` changed; every deleted or rewritten web test is listed in `docs/features/phase-11-web-commerce-integration/`). `web` tests use a stubbed `fetch` and need no running API. Phase 10 note: Needs **no** database: `*.db.test.ts` files are excluded, and the HTTP e2e suites run on the in-memory test adapters. Every package except `commerce-api` is unchanged in count and outcome; `commerce-api` gained 38 tests (the 279 pre-existing ones still pass — some had wiring-only changes, listed in `docs/features/phase-10-database-persistence/plan.md`). |
+| Test (all packages) | `pnpm turbo run test` | Verified (Phase 15) — 939 tests (44 `common` + 69 `ui-commands` + 31 `agent-intents` + 114 `api-contracts` + 364 `web` + 317 `commerce-api`). Phase 15 added 36 `ui-commands` tests (the agent-turn contract) and web tests for the chat, the agent service, batch dispatch and the ai-service proxy. The previous figures in this row (815: 43 `common`, 277 `web`) were not updated after Phase 11, so a per-phase delta for those two packages is not recorded here. Phase 11 note: every deleted or rewritten web test is listed in `docs/features/phase-11-web-commerce-integration/`. `web` tests use a stubbed `fetch` and need no running API. Phase 10 note: Needs **no** database: `*.db.test.ts` files are excluded, and the HTTP e2e suites run on the in-memory test adapters. Every package except `commerce-api` is unchanged in count and outcome; `commerce-api` gained 38 tests (the 279 pre-existing ones still pass — some had wiring-only changes, listed in `docs/features/phase-10-database-persistence/plan.md`). |
 | Test against PostgreSQL | `pnpm --filter commerce-api test:db` | Verified — 111 tests (migrations, seed, the three Postgres repositories, the transaction runner, order placement, and a full-stack HTTP suite) against the Compose database `commerce_test`. Resets that database's schema and migrates it first; refuses any database whose name does not end in `_test`. With no database reachable it **fails** with a message naming `db:up` — it never skips. |
 | Start / stop the local database | `pnpm --filter commerce-api db:up` / `db:down` | Verified — `docker compose` with `infrastructure/docker/compose.yaml`: PostgreSQL 18, bound to 127.0.0.1:5432, databases `commerce` and `commerce_test`, data in the `commerce-pgdata` volume. `db:down` keeps the data; `docker compose -f infrastructure/docker/compose.yaml down -v` destroys it |
 | Migrate the database | `pnpm --filter commerce-api db:migrate` / `db:migrate:down` | Verified — to latest / one step down, against `DATABASE_URL`; a second run is a no-op ("Already up to date." / "Nothing to revert.") |
 | Seed the menu | `pnpm --filter commerce-api db:seed` | Verified — loads the 3 categories and 6 items of `menu.seed.ts`; idempotent, never deletes; refuses to run with `NODE_ENV=production` |
 | Build (all packages) | `pnpm turbo run build` | Verified — needs no running `commerce-api`; `/` renders per request (dynamic), `/cart`, `/checkout` and `/_not-found` prerender as static shells (Phase 11); each contracts package's `build` regenerates its committed `schema/*.v1.json`; `commerce-api`'s `build` produces `dist/main.js`. Each contracts package's `build` prints a `no output files found` warning from turbo (its `outputs` key covers `dist/**`, not `schema/**`) — pre-existing since Phase 5, not a Phase 7, 8 or 9 regression. |
 | Generate one contract package's JSON Schema | `pnpm --filter @contracts/<name> build` | Verified for `common`, `ui-commands`, `agent-intents`, `api-contracts` — run after any schema change, before committing |
-| Run `apps/web` in development | `pnpm --filter web dev` | Verified — serves on http://localhost:3000 (bound to `127.0.0.1` only since Phase 11, so it is not reachable from other machines; `http://127.0.0.1:3000` always works); `/cart` and `/checkout` also live; reads everything commerce-related from `commerce-api` via `/api/commerce/v1/*`, which `src/middleware.ts` confines to `/v1` (Phase 11) |
+| Run `apps/web` in development | `pnpm --filter web dev` | Verified — serves on http://localhost:3000 (bound to `127.0.0.1` only since Phase 11, so it is not reachable from other machines; `http://127.0.0.1:3000` always works); `/cart` and `/checkout` also live; reads everything commerce-related from `commerce-api` via `/api/commerce/v1/*`, which `src/middleware.ts` confines to `/v1` (Phase 11); the chat calls ai-service via `/api/ai/v1/agent/turns`, the only ai-service path it forwards (Phase 15) |
 | Run `apps/commerce-api` in development | `pnpm --filter commerce-api dev` | Verified — needs the database (above) and refuses to start without it; serves on http://127.0.0.1:3001; `GET /health` → `200 {"status":"ok"}`; `GET /v1/menu` and `GET /v1/menu/items/:itemId` also live, the four `/v1/cart` routes (Phase 8), and `POST /v1/orders` / `GET /v1/orders/:orderId` (Phase 9) |
 | Run `apps/commerce-api`'s built output | `pnpm --filter commerce-api build && pnpm --filter commerce-api start` | Verified — same `/health`, `/v1/menu*`, `/v1/cart*` and `/v1/orders*` responses, from `dist/main.js`; carts and orders survive a restart; with the database stopped, requests get 503 `SERVICE_UNAVAILABLE` and a fresh start exits 1 |
 
@@ -153,25 +163,26 @@ detail.
 
 `packages/contracts/{common,ui-commands,agent-intents,api-contracts}` have
 no `dev`/`start` command — they are libraries, not runnable services.
-### `apps/ai-service` (Phases 12–14)
+### `apps/ai-service` (Phases 12–15)
 
 Run from `apps/ai-service/`. These commands are **not** part of
 `pnpm turbo run …` (the service is outside the pnpm workspace, ADR-0002), so
-run them separately. All were verified on 2026-09-26 (Phase 14, sub-phase
-14.5), except the live check, as its row says.
+run them separately. Test, lint, format, type check, regenerate, run and the
+live check were re-verified on 2026-09-27 (Phase 15, sub-phase 15.5). Install
+was last verified on 2026-09-26 (Phase 14); Phase 15 added no dependency.
 
 | Task | Command | Status |
 | ---- | ------- | ------ |
 | Install | `uv sync` (`uv sync --locked` proves `uv.lock` is current) | Verified. It also rebuilds from a deleted `.venv`. |
-| Test | `uv run pytest` | Verified: 611 passed, 2 skipped (the live check below). Needs no `.env`, no API key, no commerce-api, no database and no network: commerce-api is a fake on httpx's `MockTransport`. No model provider is called: the agent runs on simulated and scripted models. |
+| Test | `uv run pytest` | Verified: 760 passed, 2 skipped (the live check below), up from 611 before Phase 15. Needs no `.env`, no API key, no commerce-api, no database and no network: commerce-api is a fake on httpx's `MockTransport`. No model provider is called: the agent runs on simulated and scripted models. |
 | Lint | `uv run ruff check .` | Verified |
 | Format check | `uv run ruff format --check .` | Verified |
 | Type check | `uv run mypy` | Verified (strict, service and tests) |
 | Run in development | `uv run python -m ai_service --reload` | Verified. Serves on http://127.0.0.1:3002 (loopback only). `GET /health` returns `200 {"status":"ok"}`. `/docs` and `/openapi.json` are served only when `APP_ENV=development` (the default). |
-| Run | `uv run python -m ai_service` | Verified. No `.env` needed, since every setting has a default. An invalid value (for example `PORT=abc`) exits 1, naming the variable, not the value. So does switching LangSmith tracing on (`LANGSMITH_TRACING=true`, or any of the other tracing variables in `.env.example`). `POST /v1/agent/turns` with `{"message":"Hello"}` returns the simulated reply. |
+| Run | `uv run python -m ai_service` | Verified. No `.env` needed, since every setting has a default. An invalid value (for example `PORT=abc`) exits 1, naming the variable, not the value. So does switching LangSmith tracing on (`LANGSMITH_TRACING=true`, or any of the other tracing variables in `.env.example`). `POST /v1/agent/turns` with `{"message":"Hello"}` returns the simulated reply; `{"message":"show me the desserts"}` also returns a `uiCommands` batch (Phase 15). |
 | Run with a `.env` | `uv run --env-file .env python -m ai_service` | Verified form. Copy `.env.example` first: uv refuses `--env-file` when the file is missing. |
-| Regenerate contract models | `uv run python scripts/generate_contracts.py` | Verified: rewrites `ai_service/contracts/api_contracts.py` from `packages/contracts/api-contracts/schema/*.v1.json`, with no diff when current. Run it after a contract's JSON Schema changes; `uv run pytest` fails on drift. |
-| Live check against commerce-api | `AI_SERVICE_LIVE_COMMERCE_API_URL=http://127.0.0.1:3001 uv run pytest tests/test_live_commerce.py` | Verified (2 passed) against commerce-api started with `db:up`, `db:migrate`, `db:seed` and `dev`. Without the variable it is skipped. It adds, changes and removes one item in the shared cart (an item not already in it), leaves the rest of the cart as it was, and never places an order. |
+| Regenerate contract models | `uv run python scripts/generate_contracts.py` | Verified: rewrites the three generated modules in `ai_service/contracts/`: `api_contracts.py` (from `api-contracts/schema/*.v1.json`), `ui_commands.py` (from `ui-commands/schema/agent-turn-*.v1.json`) and `agent_intents.py` (from `agent-intents/schema/agent-intent.v1.json`), with no diff when current. Run it after a contract's JSON Schema changes; `uv run pytest` fails on drift. |
+| Live check against commerce-api | `AI_SERVICE_LIVE_COMMERCE_API_URL=http://127.0.0.1:3001 uv run pytest tests/test_live_commerce.py` | Verified (2 passed; re-run in Phase 15) against commerce-api started with `db:up`, `db:migrate`, `db:seed` and `dev`. Without the variable it is skipped. It adds, changes and removes one item in the shared cart (an item not already in it), leaves the rest of the cart as it was, and never places an order. |
 | Build | — | `NOT_APPLICABLE`: an unpackaged application with no build step. |
 
 ### Running the three apps independently
@@ -180,13 +191,12 @@ None of the three needs the others in order to start:
 
 | App | Start | Needs |
 | --- | --- | --- |
-| `apps/web` | `pnpm --filter web dev` | Nothing to start. Without commerce-api, the menu shows its error state. |
+| `apps/web` | `pnpm --filter web dev` | Nothing to start. Without commerce-api, the menu shows its error state. Without ai-service, the chat answers with a fixed error. |
 | `apps/commerce-api` | `pnpm --filter commerce-api db:up`, then `pnpm --filter commerce-api dev` | PostgreSQL (first-time setup above) |
-| `apps/ai-service` | `cd apps/ai-service && uv run python -m ai_service --reload` | Nothing to start. Its tools call commerce-api at `COMMERCE_API_URL` (default `http://127.0.0.1:3001`), but only when a model calls a tool, and the simulated model never does. There is no model provider yet. |
+| `apps/ai-service` | `cd apps/ai-service && uv run python -m ai_service --reload` | Nothing to start. Its Commerce tools call commerce-api at `COMMERCE_API_URL` (default `http://127.0.0.1:3001`) only when a model calls one. The simulated model does so only for `add <item>`, and without commerce-api that turn explains the failure. There is no model provider yet. |
 
-`apps/web` does not call `apps/ai-service` yet, although
-`POST /v1/agent/turns` now exists; the chat still uses
-`src/lib/commands/simulate.ts`.
+Since Phase 15 `apps/web`'s chat calls `apps/ai-service` (`POST
+/v1/agent/turns`, through `/api/ai/v1/agent/turns`). `simulate.ts` is gone.
 
 `NOT_CONFIGURED` means the project has no such check set up. It does not mean
 passing, and it does not mean failing. See `.claude/rules/validation.md` for
@@ -220,7 +230,8 @@ apps/
     src/components/nav/      SiteNav (Menu / Cart (n), aria-current)
     src/components/chat/     ChatInput, ChatTranscript
     src/components/dev/      CommandLogPanel (development-only)
-    src/lib/commands/        simulate.ts (temporary), dispatch.ts
+    src/lib/agent/           agentService.ts (the chat's ai-service turn)
+    src/lib/commands/        dispatch.ts (single command + turn batch)
     src/lib/state/           uiStore.tsx (durable), cartStore.tsx (temporary
                               — lines + mutations only, no pricing; gained
                               CLEAR_CART in Phase 4 for a placed order)
@@ -234,13 +245,17 @@ apps/
     src/lib/fixtures/        menu.ts (temporary)
     src/lib/money.ts         integer-cents formatting
   ai-service/     Python service — scaffolded, working (Phase 12 foundation +
-                   Phase 13 LangGraph agent; uv, FastAPI; outside the pnpm
-                   workspace — ADR-0019, ADR-0020)
+                   Phase 13 LangGraph agent + Phase 14 tools + Phase 15
+                   UI commands; uv, FastAPI; outside the pnpm workspace —
+                   ADR-0019, ADR-0020, ADR-0021, ADR-0022)
     ai_service/               __main__.py (validate config → logging →
                               uvicorn), main.py (create_app), config.py,
                               api/ (health, agent), agents/ (LangGraph state,
                               nodes, graph, prompt, service), tools/ (the
-                              five-tool allowlist, ToolService), clients/
+                              five-tool allowlist, the write-tool → intent
+                              map, ToolService), ui_commands/ (the
+                              presentation tools: UI commands, no I/O),
+                              clients/
                               (the Commerce API client: the only httpx),
                               contracts/ (generated Pydantic, never edited),
                               llm/ (model boundary: simulated model), core/
@@ -252,7 +267,8 @@ apps/
                               commerce_fakes.py = fake commerce-api;
                               test_boundaries.py = no DB/provider deps,
                               httpx confined to clients/, LangGraph/LangChain
-                              confined to agents/ and llm/, layers kept apart
+                              confined to agents/ and llm/, layers kept apart,
+                              ui_commands/ never reaching the Commerce client
   commerce-api/   NestJS service — scaffolded, working (Phase 6 foundation +
                    Phase 7 read-only Menu, Phase 8 Cart, Phase 9 Order)
     src/main.ts               bootstrap: parse env, fail-fast, build logger,
@@ -423,12 +439,12 @@ Read, in this order:
 
 ## Explicitly temporary code
 
-One module in `apps/web` is still scaffolding, header-commented with what
-replaces it — see
+None is left in `apps/web`. The last one,
+`src/lib/commands/simulate.ts` (see
 [`docs/product/food-ordering-frontend-mvp.md`](../product/food-ordering-frontend-mvp.md)
-§7:
-
-- `src/lib/commands/simulate.ts` — replaced by real `apps/ai-service` output.
+§7), was deleted in Phase 15, when the chat switched to real
+`apps/ai-service` output (ADR-0022). Its phrases live on in ai-service's
+simulated model, which is itself a stand-in until a model provider exists.
 
 The other three — the fixture menu, the client-side cart and pricing, and
 the simulated order (`order.ts`, `orderId.ts`) — were deleted in Phase 11,

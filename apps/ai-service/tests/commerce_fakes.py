@@ -23,6 +23,10 @@ from ai_service.config import Settings
 from ai_service.tools.registry import ToolDefinition, build_tool_registry
 from ai_service.tools.results import ToolResult
 from ai_service.tools.service import ToolService
+from ai_service.ui_commands import (
+    PresentationToolService,
+    build_presentation_registry,
+)
 
 MENU_ITEM: dict[str, Any] = {
     "id": "tiramisu",
@@ -134,3 +138,9 @@ class FakeCommerce:
                 return await service.execute(name, arguments)
 
         return asyncio.run(call())
+
+
+def presentation_service() -> PresentationToolService:
+    """The real presentation tool service (Phase 15). It has no I/O, so it
+    needs no fake."""
+    return PresentationToolService(build_presentation_registry())

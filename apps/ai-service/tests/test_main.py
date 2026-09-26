@@ -122,19 +122,39 @@ def test_the_app_closes_its_commerce_client_on_shutdown() -> None:
     assert http.is_closed
 
 
-def test_the_default_model_never_calls_commerce_api() -> None:
+def test_liveness_and_a_non_commerce_turn_never_call_commerce_api() -> None:
     commerce = FakeCommerce()
     http = commerce.http_client()
     app = create_app(Settings(app_env="test"), commerce_http_client=http)
 
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
+        hello = client.post("/v1/agent/turns", json={"message": "Hello"})
+        shown = client.post("/v1/agent/turns", json={"message": "Show desserts"})
+
+    # Neither liveness nor a turn that only changes the screen needs
+    # commerce-api (AC22; presentation tools do no I/O, Phase 15).
+    assert hello.status_code == shown.status_code == 200
+    assert commerce.requests == []
+
+
+def test_the_default_model_adds_through_the_injected_client() -> None:
+    # Phase 15 plan.md OD6: the simulated model now performs "add <item>" with
+    # add_cart_item, through the one Commerce API client the app was given.
+    # An empty FakeCommerce answers 404, so the add fails and no UI command
+    # is returned.
+    commerce = FakeCommerce()
+    http = commerce.http_client()
+    app = create_app(Settings(app_env="test"), commerce_http_client=http)
+
+    with TestClient(app) as client:
         turn = client.post("/v1/agent/turns", json={"message": "Add a tiramisu"})
 
-    # The default model is simulated and never calls a tool, so neither
-    # liveness nor a turn needs commerce-api (AC22).
     assert turn.status_code == 200
-    assert commerce.requests == []
+    assert "uiCommands" not in turn.json()
+    assert [(r.method, r.url.path) for r in commerce.requests] == [
+        ("POST", "/v1/cart/items")
+    ]
 
 
 def test_each_default_app_builds_its_own_client_and_closes_it(

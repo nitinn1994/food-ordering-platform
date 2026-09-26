@@ -39,7 +39,8 @@ made, and what they cost.
 | [0018](#adr-0018--apps-web-on-commerce-api-a-same-origin-proxy-one-api-client-and-server-state-without-a-new-library) | `apps/web` on commerce-api: a same-origin proxy, one API client, and server state without a new library | Accepted |
 | [0019](#adr-0019--ai-service-foundation-uv-fastapi-the-commerce-api-error-and-correlation-model-and-tested-boundaries) | ai-service foundation: uv, FastAPI, the commerce-api error and correlation model, and tested boundaries | Accepted |
 | [0020](#adr-0020--langgraph-agent-foundation-a-linear-graph-on-a-simulated-model-an-agent-service-and-refused-tracing) | LangGraph agent foundation: a linear graph on a simulated model, an agent service, and refused tracing | Accepted |
-| [0021](#adr-0021--ai-tool-calling-an-allowlisted-tool-registry-one-commerce-api-client-and-generated-contract-models) | AI tool calling: an allowlisted tool registry, one Commerce API client, and generated contract models | Accepted |
+| [0021](#adr-0021--ai-tool-calling-an-allowlisted-tool-registry-one-commerce-api-client-and-generated-contract-models) | AI tool calling: an allowlisted tool registry, one Commerce API client, and generated contract models | Accepted — decision 11 (non-tool-calling simulated model) and the intents part of decision 12 superseded by ADR-0022 |
+| [0022](#adr-0022--ai--ui-commands-presentation-tools-business-intent-validation-and-a-synchronous-turn-to-appsweb) | AI → UI commands: presentation tools, business-intent validation, and a synchronous turn to `apps/web` | Accepted |
 
 ---
 
@@ -1745,3 +1746,151 @@ Several facts shaped the design:
   against a running commerce-api (the opt-in live check), and so was one
   scripted end-to-end turn, whose correlation id appeared in commerce-api's
   logs.
+
+---
+
+## ADR-0022 — AI → UI commands: presentation tools, business-intent validation, and a synchronous turn to `apps/web`
+
+**Status:** Accepted · **Date:** 2026-09-27 (Phase 15) · **Decisions:**
+`docs/features/phase-15-ai-ui-commands/plan.md` §27, OD1–OD12, approved as
+recommended · Supersedes ADR-0021 decision 11 and the intents part of
+decision 12
+
+### Context
+
+Both halves of the AI → UI path existed, but they were not connected.
+
+- **`apps/web`** had a validated UI-command dispatcher (`dispatch.ts`) and a
+  closed allowlist (`@contracts/ui-commands`, five commands). Its only
+  producer was a hardcoded stand-in, `simulate.ts`.
+- **ai-service** returned `{reply}` only, and `apps/web` did not call it.
+- **`@contracts/agent-intents`** (three intents) had no runtime consumer,
+  although ai-service's three write tools perform exactly those operations.
+- **The agent-turn body** was hand-written Pydantic with no Zod source, which
+  breaks ADR-0003 as soon as TypeScript consumes it.
+- **ADR-0012 left an open question:** whether Pydantic generated from a
+  discriminated union's `oneOf` is usable.
+
+### Decision
+
+1. **Reuse both vocabularies unchanged** (OD1, OD2).
+   - The shape stays flat: `{type, ...fields}`, with metadata on the
+     envelope. The brief's `{type, payload, metadata}` would have been a
+     breaking change.
+   - The five UI commands are all used, and none is added. `OpenCheckout`
+     stays a candidate. `ShowOrderConfirmation` stays rejected outright.
+   - The three intents are unchanged, with no renames. `ClearCart` and
+     `PlaceOrder` stay declined.
+2. **The agent turn is a contract in `ui-commands`** (OD4, `agentTurn.ts`).
+   - The request is `{message}`.
+   - The response is `{reply, uiCommands?}`, and `uiCommands` is the
+     existing `UiCommandBatch` envelope. It is omitted, never null, when a
+     turn has none (OD12).
+   - It lives in `ui-commands` because the response is the AI → web payload,
+     and `commerce-api`'s import ban on that package already covers it.
+   - `parseAgentTurnResponse` validates in three levels: the response, the
+     envelope, then each command. Each level fails only what it owns.
+3. **Pydantic generation extends to `ui-commands` and `agent-intents`.**
+   - The generated unions are plain unions, not tagged ones. Each branch has
+     a literal `type` and forbids extra keys, so at most one can match; both
+     languages test this against the same fixtures. This closes ADR-0012's
+     open question.
+   - The generator option `string+date-time=string` keeps `issuedAt` a
+     pattern-checked string. As a datetime carrying the contract's pattern,
+     every batch raised `TypeError`.
+   - The hand-written turn models are replaced by the generated ones. The
+     request's wire rules are unchanged.
+4. **Presentation tools emit UI commands** (OD3). This is a second
+   allowlist (`ui_commands/`), separate from the Commerce tools, with one
+   tool per command.
+   - A presentation tool does no I/O. It validates its arguments strictly:
+     the command's fields minus `type`, taken from the generated model.
+   - It records the command as the tool message's `artifact`, which is never
+     sent to the model. The model reads only `{"ok": true}` or the shared
+     error shape.
+   - Calls count toward the existing 8-per-turn limit (OD10).
+   - A name registered in both lists stops the graph from being built.
+   - `ui_commands/` cannot import the Commerce client or registry
+     (`tests/test_boundaries.py`).
+   - The graph's shape is unchanged. `finalize_reply` collects the accepted
+     commands in call order, and `AgentState` gains one reviewed key,
+     `ui_commands`.
+5. **Write tools are business intents** (OD5, `tools/intents.py`).
+   - A fixed map binds each write tool to one intent.
+   - A write's arguments are validated as that generated intent, and the
+     handler receives the intent. Reads have none.
+   - The tool log line names the intent.
+   - Envelopes are still not sent. No commerce-api route accepts one, and
+     the REST routes remain the executors.
+6. **Ordering.** UI commands leave ai-service only in the final response,
+   after every write in the turn has resolved.
+7. **A synchronous HTTP turn through a same-origin proxy** (OD7). This is
+   ADR-0018's pattern.
+   - `/api/ai/v1/agent/turns` rewrites to `AI_SERVICE_URL` (server-only,
+     required at build time in production). The rewrite has one exact
+     source (no wildcard) and a fixed destination, so it is the only path
+     forwarded, and no request path can steer it elsewhere. Next answers 404
+     for any other `/api/ai/*` path.
+   - **Deliberately not guarded in `middleware.ts`.** At runtime Next hands
+     middleware an already-normalized URL. An AI branch there let
+     `/api/commerce/v1/../../ai/v1/agent/turns` through to the commerce
+     rewrite, escaping its `/v1` confinement. The Phase 15 security review
+     found this (S1), and it was fixed by restoring the Phase 11 middleware.
+     Proxy rules are verified by a live probe, not only by unit tests, which
+     build requests from the raw URL.
+   - There is no SSE, WebSocket or streaming. A turn's commands are known
+     only when it ends.
+   - The web client allows 30 s, the same as Next's proxy default, and never
+     retries.
+8. **`apps/web` applies a turn in a fixed order** (OD8).
+   1. Receive the response.
+   2. Re-read the cart from commerce-api. This happens after every turn,
+      including a failed one, because a turn may have changed the cart
+      before failing.
+   3. Show the reply, as text only.
+   4. Apply each accepted command through the exhaustive
+      `commandToUiAction`.
+
+   Only one turn is in flight at a time. `simulate.ts` is deleted (OD11).
+9. **No programmatic false-success gate** (OD9). No command in the allowlist
+   can claim an outcome, and the cart on screen is always re-read from
+   commerce-api. Showing the true cart after a failed change is not a false
+   claim.
+10. **The simulated model becomes a deterministic keyword table** (OD6).
+    - It uses `simulate.ts`'s phrases, mapped to presentation tools.
+    - For `add <item>`, it calls `add_cart_item`, then `open_cart_panel`
+      only if the add returned `"ok": true`. On an error it gives a fixed
+      explanation and no command.
+    - Its replies are fixed and never echo the customer.
+
+### Rules this sets for later phases
+
+- **A new UI command** starts in the `ui-commands` Zod union. It then needs a
+  presentation tool, a `uiStore` action, and a case in `commandToUiAction`.
+  The bijection tests fail until all exist. It must not be able to change
+  commerce state or claim that a change succeeded.
+- **A new intent** needs a route, an entry in `tools/intents.py`, and a
+  write tool.
+- **Nothing reaches the browser from ai-service except the turn body**,
+  through the one proxied path.
+- **Streaming** (a real provider, or voice in Phase 16) must keep the
+  ordering rule: no UI command before the writes it depends on have
+  resolved.
+
+### Consequences
+
+- **Typing "add …" in the chat changes the real shared cart** through the
+  simulated model. This is visible and reversible, and bounded by ADR-0021's
+  limits. A duplicate add still adds twice (§8 gap 3).
+- **A command naming an unknown id fails safe.** An unknown item is a
+  no-op. An unknown category filters the menu to empty, recoverable with
+  "All". Command ids are not checked against the menu (follow-up).
+- **When ai-service is down, Next's proxy answers 500**, so the chat shows
+  the generic "Something went wrong on our side" copy. It is not the
+  "can't reach" copy, which is kept for the browser failing to reach
+  `apps/web` itself. The cart is still re-read. This was observed in the
+  Phase 15 manual check.
+- **Web and ai-service agree by construction on what a turn is:** one Zod
+  source and one committed JSON Schema, drift-tested on both sides.
+- **The quality of a real model's command selection is not measured yet.**
+  Every path is covered by scripted and simulated models.

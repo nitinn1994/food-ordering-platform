@@ -10,6 +10,11 @@ exists and what can run are one list.
 Excluded on purpose (plan.md section 4): ``create_order`` and ``get_order``
 (deferred), ``clear_cart``, ``get_categories`` and ``get_orders`` (no
 commerce-api route), ``get_menu_item`` (``get_menu`` already covers it).
+
+Phase 15 (plan.md section 12): each write tool carries the business intent it
+performs (``tools/intents.py``), and its handler receives that validated
+intent, not the raw arguments. The presentation tools that emit UI commands
+live in a separate registry (``ai_service/ui_commands/``) and never here.
 """
 
 from collections.abc import Awaitable, Callable, Mapping
@@ -17,7 +22,15 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Literal
 
+from pydantic import BaseModel
+
 from ai_service.clients.commerce import CommerceClient
+from ai_service.contracts.agent_intents import (
+    AddItemToCart,
+    RemoveItemFromCart,
+    SetCartItemQuantity,
+)
+from ai_service.tools.intents import TOOL_INTENTS, IntentModel
 from ai_service.tools.results import ToolData
 from ai_service.tools.schemas import (
     AddCartItemInput,
@@ -32,14 +45,20 @@ Category = Literal["read", "write"]
 
 
 @dataclass(frozen=True)
-class ToolDefinition[InputT: ToolInput]:
+class ToolDefinition[ArgT: BaseModel]:
+    """``ArgT`` is what the handler receives: the validated input model for a
+    read, the validated business intent for a write."""
+
     name: str
     description: str
     # read: runs whenever relevant. write: changes the cart; never retried.
     category: Category
-    input_model: type[InputT]
+    # The arguments the model sees and is validated against.
+    input_model: type[ToolInput]
     # One Commerce API client call and nothing else.
-    handler: Callable[[CommerceClient, InputT], Awaitable[ToolData]]
+    handler: Callable[[CommerceClient, ArgT], Awaitable[ToolData]]
+    # Writes only: the business intent this tool performs (tools/intents.py).
+    intent: type[IntentModel] | None = None
 
 
 async def _get_menu(client: CommerceClient, _: GetMenuInput) -> ToolData:
@@ -50,20 +69,20 @@ async def _get_cart(client: CommerceClient, _: GetCartInput) -> ToolData:
     return await client.get_cart()
 
 
-async def _add_cart_item(client: CommerceClient, args: AddCartItemInput) -> ToolData:
-    return await client.add_cart_item(args.itemId, args.quantity)
+async def _add_cart_item(client: CommerceClient, intent: AddItemToCart) -> ToolData:
+    return await client.add_cart_item(intent.itemId, intent.quantity)
 
 
 async def _set_cart_item_quantity(
-    client: CommerceClient, args: SetCartItemQuantityInput
+    client: CommerceClient, intent: SetCartItemQuantity
 ) -> ToolData:
-    return await client.set_cart_item_quantity(args.itemId, args.quantity)
+    return await client.set_cart_item_quantity(intent.itemId, intent.quantity)
 
 
 async def _remove_cart_item(
-    client: CommerceClient, args: RemoveCartItemInput
+    client: CommerceClient, intent: RemoveItemFromCart
 ) -> ToolData:
-    return await client.remove_cart_item(args.itemId)
+    return await client.remove_cart_item(intent.itemId)
 
 
 def build_tool_registry() -> Mapping[str, ToolDefinition[Any]]:
@@ -99,6 +118,7 @@ def build_tool_registry() -> Mapping[str, ToolDefinition[Any]]:
             category="write",
             input_model=AddCartItemInput,
             handler=_add_cart_item,
+            intent=TOOL_INTENTS["add_cart_item"],
         ),
         ToolDefinition(
             name="set_cart_item_quantity",
@@ -110,6 +130,7 @@ def build_tool_registry() -> Mapping[str, ToolDefinition[Any]]:
             category="write",
             input_model=SetCartItemQuantityInput,
             handler=_set_cart_item_quantity,
+            intent=TOOL_INTENTS["set_cart_item_quantity"],
         ),
         ToolDefinition(
             name="remove_cart_item",
@@ -120,6 +141,7 @@ def build_tool_registry() -> Mapping[str, ToolDefinition[Any]]:
             category="write",
             input_model=RemoveCartItemInput,
             handler=_remove_cart_item,
+            intent=TOOL_INTENTS["remove_cart_item"],
         ),
     )
     return MappingProxyType({d.name: d for d in definitions})

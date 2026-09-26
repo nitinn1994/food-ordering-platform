@@ -10,6 +10,10 @@ section 4.2). A later tool may put a commerce-api response into a message for
 the model to read. That is context, never an authoritative copy, and it is
 never read back as truth.
 
+Phase 15 adds ``ui_commands`` (plan.md section 19): the UI commands the
+turn's presentation tool calls recorded, set by ``finalize_reply`` only. They
+describe what the screen should show; they hold no commerce data.
+
 tests/test_agent_state.py pins the keys, so adding one is a reviewed
 decision, not a side effect.
 """
@@ -19,6 +23,8 @@ from typing import Annotated, NotRequired, TypedDict
 from langchain_core.messages import AnyMessage
 from langgraph.graph import add_messages
 
+from ai_service.ui_commands import UiCommandModel
+
 
 class AgentState(TypedDict):
     # add_messages appends a node's messages to the list instead of
@@ -26,3 +32,5 @@ class AgentState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
     # Set by finalize_reply only, once the model's output has been checked.
     reply: NotRequired[str]
+    # Set by finalize_reply only: accepted presentation calls, in call order.
+    ui_commands: NotRequired[list[UiCommandModel]]

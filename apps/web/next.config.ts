@@ -16,6 +16,16 @@ const commerceApiUrl = (
   process.env.COMMERCE_API_URL?.trim() || DEV_COMMERCE_API_URL
 ).replace(/\/+$/, "");
 
+// ai-service's development default — DEV_AI_SERVICE_URL in
+// src/lib/api/config.ts, repeated for the same reason. The same build-time
+// rule as COMMERCE_API_URL: a production build must set AI_SERVICE_URL
+// (docs/features/phase-15-ai-ui-commands/plan.md §14).
+const DEV_AI_SERVICE_URL = "http://127.0.0.1:3002";
+
+const aiServiceUrl = (
+  process.env.AI_SERVICE_URL?.trim() || DEV_AI_SERVICE_URL
+).replace(/\/+$/, "");
+
 const nextConfig: NextConfig = {
   // Same-origin proxy to commerce-api (plan.md OD1): the browser calls
   // /api/commerce/v1/*, so commerce-api needs no CORS and its URL never
@@ -33,6 +43,20 @@ const nextConfig: NextConfig = {
       {
         source: "/api/commerce/v1/:path*",
         destination: `${commerceApiUrl}/v1/:path*`,
+      },
+      // Same-origin proxy to ai-service (Phase 15 plan.md §14): exactly one
+      // path, no wildcard, and a fixed destination — so no request path can
+      // steer it anywhere else, and ai-service's /health, /docs and anything
+      // added later stay unreachable from the browser (Next answers 404 for
+      // every other /api/ai/* path: nothing matches it). Deliberately NOT
+      // guarded in src/middleware.ts: at runtime middleware sees an
+      // already-normalized URL, and an AI branch there let
+      // /api/commerce/v1/../../ai/v1/agent/turns through to the commerce
+      // rewrite (security-review.md S1). Next's default proxy timeout (30 s)
+      // covers the worst-case turn (8 tool calls x 3 s).
+      {
+        source: "/api/ai/v1/agent/turns",
+        destination: `${aiServiceUrl}/v1/agent/turns`,
       },
     ];
   },

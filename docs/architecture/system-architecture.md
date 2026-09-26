@@ -59,9 +59,20 @@ tools. They call `GET /v1/menu`, `GET /v1/cart` and the three
 `/v1/cart/items` routes through one client (`apps/ai-service/ai_service/
 clients/commerce/`), which is the only code in ai-service that speaks HTTP.
 Its base URL is `COMMERCE_API_URL`, and it validates every response against
-Pydantic models generated from `api-contracts`. The edge is live only for a
-model that calls tools: the simulated model does not, so today it runs in
-tests.
+Pydantic models generated from `api-contracts`. Since Phase 15 the
+simulated model uses it for one phrase, `add <item>`, which calls
+`add_cart_item` (ADR-0022). Every other tool path still runs only in tests,
+on scripted models, until a real provider arrives.
+
+**Web → AI, as built (Phase 15, ADR-0022).** The "conversational turn" and
+"agent response + UI commands" edges exist. The chat in `apps/web` calls its
+own `/api/ai/v1/agent/turns`, which Next.js rewrites to `AI_SERVICE_URL`
+(server-only). That is the only path forwarded: the rewrite has one exact
+source and a fixed destination, and Next answers 404 for anything else under
+`/api/ai/`. It is deliberately not routed through `src/middleware.ts`, which
+at runtime sees only already-normalized URLs (ADR-0022, security review S1). It is one synchronous HTTP request
+per turn, with no streaming. The response carries the reply and, optionally,
+a batch of UI commands, both defined in `@contracts/ui-commands`.
 
 ## 3. Request walkthrough
 
@@ -95,7 +106,29 @@ calls the REST route that executes the intent (`POST /v1/cart/items` for
 `RemoveItemFromCart`), whose body is field-for-field the intent's payload.
 commerce-api validates, applies and returns the whole cart, which goes back
 to the model as the tool's result. Placing an order is not an agent tool
-(ADR-0021). Steps 7–9 (UI commands, refetch) arrive with Phase 15.
+(ADR-0021).
+
+**As built (Phase 15, ADR-0022).**
+
+- **Step 2.** Web sends only the message. There is no conversation
+  reference yet, because turns are stateless.
+- **Step 4, business intents.** Since Phase 15 each write tool is bound to
+  exactly one `agent-intents` intent, and its arguments are validated as
+  that intent before the route is called. The intent stays inside
+  ai-service.
+- **Step 7, UI commands.** The agent issues them through a second
+  allowlist, the presentation tools. They are validated against Pydantic
+  generated from `ui-commands`, collected when the turn ends (after every
+  write has resolved), and returned as a `UiCommandBatch` beside the reply.
+- **Step 8.** Web validates the response again with
+  `parseAgentTurnResponse`. A malformed command drops alone. Each survivor
+  is applied, in order, through `dispatch.ts`'s exhaustive switch.
+- **Step 9.** Web re-reads the cart from commerce-api after **every** turn,
+  success or failure, *before* applying any command. So an `OpenCartPanel`
+  opens onto the cart commerce-api has just confirmed.
+
+No UI command can claim a change succeeded, so a failed write cannot show
+up as a false success.
 
 A touch interaction skips steps 2–7 entirely: `apps/web` calls `commerce-api`
 directly, then refreshes. The AI service is not in the path of a button press.
@@ -190,8 +223,8 @@ than once per family:
 | Directory | Produced by | Consumed by | Purpose |
 | --------- | ----------- | ----------- | ------- |
 | `common/` | — | `ui-commands`, `agent-intents`, `commerce-api` | Shared primitives: contract version, identifiers, quantity, integer-cents money, correlation id, idempotency key, ISO-8601 timestamp, structured error |
-| `ui-commands/` | `ai-service` | `apps/web` | What the screen should do |
-| `agent-intents/` | `ai-service` | `commerce-api` | What should happen to commerce state |
+| `ui-commands/` | `ai-service` | `apps/web` | What the screen should do. Since Phase 15 it also holds the agent turn (`agentTurn.ts`): the request and response of ai-service's `POST /v1/agent/turns`, whose response carries a UI command batch. `ai-service` generates Pydantic from it |
+| `agent-intents/` | `ai-service` | `commerce-api` | What should happen to commerce state. Since Phase 15 `ai-service` validates every write tool call as one of these intents (generated Pydantic) before calling the commerce-api route that executes it. The envelope is not sent |
 | `api-contracts/` | `commerce-api` | `apps/web`, `ai-service` | Request/response shapes for the commerce API. First populated in Phase 7 by the Menu domain (`menuResponseSchema`, `menuItemResponseSchema`). `apps/web` validates against it since Phase 11. `ai-service` consumes generated Pydantic models of four of its shapes since Phase 14 |
 
 `commerce-api` (Phase 6) is a real runtime consumer of `common` — its error
@@ -234,9 +267,14 @@ runs `datamodel-code-generator` over the committed JSON Schema and writes
 `ai_service/contracts/api_contracts.py`, which is committed and never edited
 by hand. A test regenerates it and fails on drift, the same guard each
 contracts package applies to its own JSON Schema. There is still no CI to
-run the generator, so the drift test is the enforcement. `agent-intents` and
-`ui-commands` are not generated yet: their discriminated unions (ADR-0012)
-are answered by the phase that consumes them. The `ContractError` error body
+run the generator, so the drift test is the enforcement. **Phase 15
+(ADR-0022) extends it to `ui-commands`** (the agent turn, its batch and
+commands → `ui_commands.py`) **and `agent-intents`** (the intent union →
+`agent_intents.py`). This answers ADR-0012's open question on the
+discriminated unions. The generated Python union is a plain union, not a
+tagged one, but each branch has a literal `type` and forbids extra keys, so
+at most one branch can match. Tests in both languages prove it against the
+same fixtures. The `ContractError` error body
 stays a hand-written Pydantic model tested against the committed
 `common/schema/error.v1.json`: a scoped, guarded exception (ADR-0019), not
 widened.

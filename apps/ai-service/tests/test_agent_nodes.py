@@ -30,7 +30,12 @@ from ai_service.agents.prompts import SYSTEM_PROMPT
 from ai_service.agents.state import AgentState
 from ai_service.llm.simulated import SIMULATED_REPLY, SimulatedChatModel
 from ai_service.tools.registry import build_tool_registry, tool_schemas
-from tests.commerce_fakes import CART, FakeCommerce, json_response
+from tests.commerce_fakes import (
+    CART,
+    FakeCommerce,
+    json_response,
+    presentation_service,
+)
 from tests.fakes import (
     MODEL_EXCEPTION_SENTINEL,
     RaisingChatModel,
@@ -114,7 +119,8 @@ def test_call_model_propagates_a_model_failure() -> None:
 def test_finalize_reply_sets_reply_from_the_last_model_message() -> None:
     update = finalize_reply(state(HumanMessage("Hello"), AIMessage("Hi there")))
 
-    assert update == {"reply": "Hi there"}
+    # No presentation call in the turn: no UI commands (Phase 15).
+    assert update == {"reply": "Hi there", "ui_commands": []}
 
 
 @pytest.mark.parametrize(
@@ -198,7 +204,9 @@ def test_counts_are_derived_from_the_messages() -> None:
 def _execute(commerce: FakeCommerce, *messages: AnyMessage) -> list[ToolMessage]:
     async def run() -> dict[str, Any]:
         async with commerce.http_client() as http:
-            node = make_execute_tools(commerce.tool_service(http))
+            node = make_execute_tools(
+                commerce.tool_service(http), presentation_service()
+            )
             return await node(state(*messages))
 
     replies: list[ToolMessage] = asyncio.run(run())["messages"]

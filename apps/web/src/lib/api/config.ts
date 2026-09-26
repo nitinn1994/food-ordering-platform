@@ -34,6 +34,20 @@ export function resolveServerApiBase(env: Env = process.env): string {
   return DEV_COMMERCE_API_URL;
 }
 
+// Where apps/web reaches ai-service — docs/features/phase-15-ai-ui-commands/
+// plan.md §14. The same same-origin pattern as commerce-api (ADR-0018): the
+// browser calls /api/ai/v1/agent/turns, and next.config.ts rewrites exactly
+// that one path to AI_SERVICE_URL (server-only). Only the browser calls
+// ai-service — ChatInput is a client component, and no Server Component
+// does — so unlike commerce-api there is no server-side base to resolve.
+export const BROWSER_AI_BASE = "/api/ai";
+export const AGENT_TURN_PATH = "/v1/agent/turns";
+
+// ai-service's own development default (apps/ai-service/.env.example:
+// HOST=127.0.0.1, PORT=3002). next.config.ts repeats this literal, for the
+// same reason as DEV_COMMERCE_API_URL.
+export const DEV_AI_SERVICE_URL = "http://127.0.0.1:3002";
+
 export function resolveApiBase(
   isServer: boolean = typeof window === "undefined",
   env: Env = process.env,

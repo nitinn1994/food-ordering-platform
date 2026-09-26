@@ -2,17 +2,19 @@
 
 ``execute`` is the only way a tool runs: it resolves the name against the
 registry (the allowlist), validates the arguments against the tool's strict
-input model, makes the tool's one client call, and turns every expected
-failure into a ``ToolResult``. A tool failure is data for the model, never
-an exception that fails the turn.
+input model, validates a write's arguments again as its business intent
+(Phase 15 plan.md section 12), makes the tool's one client call, and turns
+every expected failure into a ``ToolResult``. A tool failure is data for the
+model, never an exception that fails the turn.
 
 What is not converted: an unexpected exception (a bug, including
 ``InvalidCommerceArgumentError``, which validation here makes unreachable)
 propagates, so the turn fails with AGENT_FAILED rather than disguising a
 bug as a commerce outage.
 
-One ``ai_service.tools`` log line per call: tool, category, outcome, error
-code, commerce status and duration. Never the arguments (model output, even
+One ``ai_service.tools`` log line per call: tool, category, intent (a
+write's contract name, from a fixed vocabulary), outcome, error code,
+commerce status and duration. Never the arguments (model output, even
 an item id), the result, commerce-api's message or an unregistered name
 (ADR-0019 S2).
 """
@@ -22,7 +24,7 @@ import time
 from collections.abc import Mapping
 from typing import Any
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from ai_service.clients.commerce import (
     CommerceApiError,
@@ -31,6 +33,7 @@ from ai_service.clients.commerce import (
     CommerceOutcomeUnknownError,
     CommerceUnavailableError,
 )
+from ai_service.tools.intents import build_intent, intent_name
 from ai_service.tools.registry import ToolDefinition, tool_schemas
 from ai_service.tools.results import (
     COMMERCE_BAD_RESPONSE,
@@ -73,7 +76,9 @@ class ToolService:
         if definition is None:
             return self._finish(started_at, None, ToolResult.failure(UNKNOWN_TOOL))
         try:
-            args = definition.input_model.model_validate(arguments)
+            args: BaseModel = definition.input_model.model_validate(arguments)
+            if definition.intent is not None:
+                args = build_intent(definition.intent, args)
         except ValidationError as error:
             result = ToolResult.failure(
                 INVALID_TOOL_ARGUMENTS, _declared_field(error, definition)
@@ -117,6 +122,11 @@ class ToolService:
                 "fields": {
                     "tool": definition.name if definition else UNREGISTERED_TOOL,
                     "category": definition.category if definition else None,
+                    "intent": (
+                        intent_name(definition.intent)
+                        if definition and definition.intent
+                        else None
+                    ),
                     "outcome": "ok" if result.ok else "error",
                     "error_code": error_code,
                     "commerce_status": commerce_status,

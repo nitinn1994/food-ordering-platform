@@ -15,3 +15,16 @@ export type { UiCommandBatch } from "./envelope";
 
 export { parseCommand, parseBatch } from "./parse";
 export type { ParseResult, BatchCommandResult, BatchParseResult } from "./parse";
+
+export {
+  agentTurnRequestSchema,
+  agentTurnResponseSchema,
+  parseAgentTurnResponse,
+  MAX_TURN_MESSAGE_LENGTH,
+  MAX_TURN_REPLY_LENGTH,
+} from "./agentTurn";
+export type {
+  AgentTurnRequest,
+  AgentTurnResponse,
+  AgentTurnParseResult,
+} from "./agentTurn";

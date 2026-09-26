@@ -14,13 +14,19 @@ def get_agent_service(request: Request) -> AgentService:
     return service
 
 
-# One conversational turn, handled by a simulated model in Phase 13
-# (docs/api/ai-service.md). Failures arrive as AgentTurnFailedError and are
-# mapped by core/errors.py like any AiServiceError.
-@router.post("/turns", response_model=AgentTurnResponse)
+# One conversational turn, handled by a simulated model
+# (docs/api/ai-service.md). The body carries the reply and, when the turn
+# produced any, its UI commands (Phase 15). Failures arrive as
+# AgentTurnFailedError and are mapped by core/errors.py like any
+# AiServiceError.
+# response_model_exclude_none: a turn without UI commands omits uiCommands.
+# The contract makes it optional, never nullable (Phase 15 plan.md OD12).
+@router.post(
+    "/turns", response_model=AgentTurnResponse, response_model_exclude_none=True
+)
 async def create_turn(
     body: AgentTurnRequest,
     service: Annotated[AgentService, Depends(get_agent_service)],
 ) -> AgentTurnResponse:
     result = await service.run_turn(body.message)
-    return AgentTurnResponse(reply=result.reply)
+    return AgentTurnResponse(reply=result.reply, uiCommands=result.ui_commands)

@@ -6,10 +6,17 @@ They do not log: turn-level logging belongs to the agent service and
 tool-level logging to the tool service, and a node that logged would be one
 step from logging content.
 
-``execute_tools`` only translates: model tool calls in, ``ToolService``
-calls, tool messages out. It never speaks HTTP and never interprets a
-result. How many rounds and calls a turn has used is derived from the
-messages, so the state gains no key.
+``execute_tools`` only translates: model tool calls in, ``ToolService`` or
+``PresentationToolService`` calls, tool messages out. It never speaks HTTP
+and never interprets a result. How many rounds and calls a turn has used is
+derived from the messages, so the state gains no key for them.
+
+Phase 15 (plan.md sections 13 and 16): a presentation call's validated UI
+command rides on its tool message as ``artifact``, which is never sent to the
+model. ``finalize_reply`` collects those artifacts, in call order, once the
+turn is over, so no UI command leaves the graph before every commerce write
+in the turn has resolved. Presentation calls count toward the same per-turn
+limit as Commerce calls (OD10).
 """
 
 from collections.abc import Sequence
@@ -22,6 +29,8 @@ from ai_service.agents.prompts import SYSTEM_PROMPT
 from ai_service.agents.state import AgentState
 from ai_service.tools.results import INVALID_TOOL_ARGUMENTS, TOOL_CALL_LIMIT_EXCEEDED
 from ai_service.tools.service import ToolService
+from ai_service.ui_commands import PresentationToolService, UiCommandModel
+from ai_service.ui_commands.service import UI_COMMAND_CLASSES
 
 # Model messages that ask for tools, per turn. A further request goes to
 # finalize_reply, which refuses it (AGENT_FAILED).
@@ -107,11 +116,19 @@ def route_after_model(
     return FINALIZE_REPLY
 
 
-def make_execute_tools(tool_service: ToolService) -> ExecuteToolsNode:
-    """Run the last model message's tool calls through ``tool_service``,
-    one after another in the model's order, and answer every call id with
-    exactly one tool message (providers reject a turn with an unanswered
-    call)."""
+def make_execute_tools(
+    tool_service: ToolService, presentation_service: PresentationToolService
+) -> ExecuteToolsNode:
+    """Run the last model message's tool calls, one after another in the
+    model's order: presentation tools through ``presentation_service``,
+    every other name through ``tool_service`` (which refuses a name it does
+    not know). Answer every call id with exactly one tool message (providers
+    reject a turn with an unanswered call)."""
+
+    def refuse(name: str, code: str) -> str:
+        if presentation_service.handles(name):
+            return presentation_service.refuse(name, code).to_content()
+        return tool_service.refuse(name, code).to_content()
 
     async def execute_tools(state: AgentState) -> dict[str, Any]:
         message = state["messages"][-1]
@@ -129,29 +146,54 @@ def make_execute_tools(tool_service: ToolService) -> ExecuteToolsNode:
         # each other into CART_CONFLICT (plan.md AC18).
         for call in message.tool_calls:
             used += 1
+            name = call["name"]
             if used > MAX_TOOL_CALLS_PER_TURN:
-                result = tool_service.refuse(call["name"], TOOL_CALL_LIMIT_EXCEEDED)
+                content = refuse(name, TOOL_CALL_LIMIT_EXCEEDED)
+                replies.append(_tool_message(content, call["id"]))
+            elif presentation_service.handles(name):
+                outcome = presentation_service.execute(name, call["args"])
+                replies.append(
+                    _tool_message(outcome.to_content(), call["id"], outcome.command)
+                )
             else:
-                result = await tool_service.execute(call["name"], call["args"])
-            replies.append(_tool_message(result.to_content(), call["id"]))
+                result = await tool_service.execute(name, call["args"])
+                replies.append(_tool_message(result.to_content(), call["id"]))
         # Arguments that were not even JSON: answered, never run.
         for invalid in message.invalid_tool_calls:
-            result = tool_service.refuse(invalid["name"] or "", INVALID_TOOL_ARGUMENTS)
-            replies.append(_tool_message(result.to_content(), invalid["id"]))
+            content = refuse(invalid["name"] or "", INVALID_TOOL_ARGUMENTS)
+            replies.append(_tool_message(content, invalid["id"]))
         return {"messages": replies}
 
     return execute_tools
 
 
-def _tool_message(content: str, call_id: str | None) -> ToolMessage:
-    return ToolMessage(content=content, tool_call_id=call_id or "")
+def _tool_message(
+    content: str, call_id: str | None, command: UiCommandModel | None = None
+) -> ToolMessage:
+    # artifact: kept beside the message for finalize_reply, never sent to the
+    # model (langchain_core's documented use of ToolMessage.artifact).
+    return ToolMessage(content=content, tool_call_id=call_id or "", artifact=command)
+
+
+def collected_ui_commands(messages: Sequence[AnyMessage]) -> list[UiCommandModel]:
+    """The UI commands accepted in this turn, in call order. Only
+    ``execute_tools`` builds tool messages, and it sets an artifact only for
+    an accepted presentation call."""
+    return [
+        message.artifact
+        for message in messages
+        if isinstance(message, ToolMessage)
+        and isinstance(message.artifact, UI_COMMAND_CLASSES)
+    ]
 
 
 def finalize_reply(state: AgentState) -> dict[str, Any]:
-    """Check the model's last message and turn it into ``reply``.
+    """Check the model's last message and turn it into ``reply``, and
+    collect the turn's UI commands into ``ui_commands``.
 
-    The one place free-form model output becomes a typed result; later
-    phases validate structured output (intents, UI commands) here too.
+    The one place model output becomes a typed result. The UI commands were
+    already validated one by one when they were called; the response
+    validates them again as a batch (agents/service.py).
     """
     if not state["messages"]:
         raise AgentOutputError("no messages")
@@ -166,4 +208,7 @@ def finalize_reply(state: AgentState) -> dict[str, Any]:
         raise AgentOutputError("model reply is not plain text")
     if not message.content.strip():
         raise AgentOutputError("model reply is empty")
-    return {"reply": message.content}
+    return {
+        "reply": message.content,
+        "ui_commands": collected_ui_commands(state["messages"]),
+    }

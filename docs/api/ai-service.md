@@ -1,12 +1,13 @@
 # ai-service HTTP API
 
-**Status:** Phase 14. Routes: `GET /health` and `POST /v1/agent/turns`
-(a LangGraph agent on a simulated model, with five Commerce API tools).
+**Status:** Phase 15. Routes: `GET /health` and `POST /v1/agent/turns`
+(a LangGraph agent on a simulated model, with five Commerce API tools and
+five presentation tools that return UI commands to `apps/web`).
 **Source of truth:** `apps/ai-service/ai_service/` (the app is wired in
 `main.py`, errors in `core/errors.py`, body limits in
 `core/request_limits.py`, the agent in `agents/`, the tools in `tools/`, the
-Commerce API client in `clients/commerce/`). **Decisions:** ADR-0019,
-ADR-0020, ADR-0021.
+Commerce API client in `clients/commerce/`, the presentation tools in
+`ui_commands/`). **Decisions:** ADR-0019, ADR-0020, ADR-0021, ADR-0022.
 
 This service is deliberately built like commerce-api
 ([`commerce-api.md`](./commerce-api.md)). A caller sees the same error body,
@@ -14,9 +15,13 @@ the same correlation headers and the same health contract from both.
 
 ## 1. Style
 
-JSON over HTTP. Listens on `127.0.0.1:3002` by default. There is no CORS: any
-future browser access goes through `apps/web`'s same-origin proxy, as it
-already does for commerce-api (ADR-0018). There is no authentication yet
+JSON over HTTP. Listens on `127.0.0.1:3002` by default. There is no CORS:
+browser access goes through `apps/web`'s same-origin proxy, as it does for
+commerce-api (ADR-0018). Since Phase 15 that proxy forwards exactly one path,
+`/api/ai/v1/agent/turns` → `POST /v1/agent/turns`. Every other path under
+`/api/ai/` (including `/health` and `/docs`) is answered 404 by `apps/web`
+and never reaches this service: the rewrite's source is that one exact path
+and its destination is fixed (ADR-0022). There is no authentication yet
 (`CLAUDE.md`).
 
 ## 2. Versioning
@@ -29,7 +34,7 @@ Business routes live under `/v1/...`, like commerce-api, not under
 | Method | Path | Response |
 | --- | --- | --- |
 | GET | `/health` | `200 {"status":"ok"}` |
-| POST | `/v1/agent/turns` | `200 {"reply": "..."}` (§3.1) |
+| POST | `/v1/agent/turns` | `200 {"reply": "...", "uiCommands"?: {...}}` (§3.1) |
 | GET | `/docs`, `/redoc`, `/openapi.json` | Generated API docs. Served **only when `APP_ENV=development`**. Otherwise `404 ROUTE_NOT_FOUND`. |
 
 ### 3.1 `POST /v1/agent/turns`
@@ -42,36 +47,73 @@ START → call_model ──(tool calls, rounds left)──▶ execute_tools ─�
                    └─(otherwise)────────────────▶ finalize_reply → END
 ```
 
-The model may call the tools in §3.2, which call commerce-api (ADR-0021).
+The model may call the Commerce tools in §3.2, which call commerce-api
+(ADR-0021), and the presentation tools in §3.3, which return UI commands to
+`apps/web` (ADR-0022).
 
-**The model is still simulated.** There is no model provider yet
-(ADR-0020), and the simulated model never calls a tool, so today the reply is
-always the same fixed text and no turn calls commerce-api:
+Both bodies are defined once, in Zod, in `@contracts/ui-commands`
+(`agentTurnRequestSchema`, `agentTurnResponseSchema`), with committed JSON
+Schema in `packages/contracts/ui-commands/schema/agent-turn-*.v1.json`. This
+service uses Pydantic models generated from that schema
+(`ai_service/contracts/ui_commands.py`), and `apps/web` validates the same
+definition. Nothing about the turn is hand-written on either side.
 
 ```jsonc
 // Request
-{ "message": "Hello" }
-// 200 response
-{ "reply": "Ordering by chat isn't available yet. You can browse the menu and add items to your cart directly." }
+{ "message": "show me the desserts" }
+// 200 response: the turn produced UI commands
+{
+  "reply": "Here's that category.",
+  "uiCommands": {
+    "contractVersion": 1,
+    "correlationId": "turn-7f3a",            // this turn's X-Correlation-Id (§6)
+    "issuedAt": "2026-09-26T12:00:00.000Z",  // ISO-8601 UTC, always ending in Z
+    "commands": [{ "type": "ShowMenuCategory", "categoryId": "desserts" }]
+  }
+}
+// 200 response: no UI commands. The key is omitted, never null.
+{ "reply": "Sorry, that item is currently unavailable. Your cart hasn't changed." }
 ```
 
 | Field | Rule |
 | --- | --- |
 | `message` | Required string, 1–2000 characters, with at least one non-whitespace character. Any other key is rejected. |
-| `reply` | String. Always present on a 200. |
+| `reply` | String, 1–4000 characters. Always present on a 200. Untrusted wording: `apps/web` shows it as text only. |
+| `uiCommands` | Optional. Present only when the turn produced at least one UI command: a `UiCommandBatch` envelope with `contractVersion` 1, the turn's correlation id, an ISO-8601 UTC `Z` timestamp and 1–8 commands in the order the model asked for them (the contract allows 10; the per-turn tool-call limit caps it at 8). |
+
+**The model is still simulated** (ADR-0020): there is no provider. Since
+Phase 15 it is a deterministic keyword table (`llm/simulated.py`, ADR-0022),
+ported from the stand-in `apps/web` used before it called this route:
+
+| Message | Tool calls | Reply |
+| --- | --- | --- |
+| `show me the desserts`, `…starters…`, `…mains…` | `show_menu_category` | `Here's that category.` |
+| `search for X`, `find X` | `search_menu` (`X`, cut to 200 characters) | `Here's what I found.` |
+| `…details…` | `show_item_detail` (`tiramisu`) | `Here are the details.` |
+| `…tiramisu…` | `highlight_item` (`tiramisu`) | `Highlighting that item.` |
+| `…cart…` | `open_cart_panel` (`open: true`) | `Here's your cart.` |
+| `add <item>` (also `add a …`, `… to my cart`) | `add_cart_item` (`<item>` as a slug, quantity 1), then `open_cart_panel` **only if** the add returned `"ok": true` | `Added it to your cart.`, or a fixed explanation per error code and no UI command |
+| anything else | none | a fixed help text |
+
+Its replies are fixed strings. It never repeats the customer's text and
+never states a price. commerce-api decides whether an item exists.
 
 - **Stateless.** Every turn is independent: there is no conversation id, no
   session and no memory. The request's `X-Correlation-Id` (§6) is the only
   link between turns. A `conversationId` will be added, as an optional
   field, by the phase that adds memory.
-- **Text only.** There is no `intent` or UI-command field yet. Both will be
-  generated from `packages/contracts`, and added to the response
-  additively, by the phases that produce them.
+- **UI commands, never intents.** The response carries UI commands only.
+  Business intents never leave this service (§3.4,
+  `system-architecture.md` §4.4). UI commands are delivered only when the
+  turn is over, after every cart change in it has resolved.
 - **Commerce access goes through tools only** (§3.2). A reply's wording
   about prices or a cart is still not authoritative
   (`system-architecture.md` §4.3). What the customer's cart holds is what
   commerce-api returns.
-- `apps/web` does not call this route yet.
+- **`apps/web` calls this route** from its chat (Phase 15), through the
+  proxy in §1. It validates the response again, applies each accepted UI
+  command, and re-reads the cart from commerce-api after every turn,
+  including a failed one.
 
 | Status | Code | When |
 | --- | --- | --- |
@@ -79,7 +121,7 @@ always the same fixed text and no turn calls commerce-api:
 | 405 | `METHOD_NOT_ALLOWED` | Any method but `POST`. |
 | 413 | `PAYLOAD_TOO_LARGE` | The body is over 16 KB (§5.1). |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | The body is not `application/json` (§5.1). |
-| 500 | `AGENT_FAILED` | The agent could not produce a reply: the model or a graph step failed, the result failed validation, the model was still asking for tools after the round limit, or one model message asked for more than 16 tool calls (§3.2). The body is always `{"code":"AGENT_FAILED","message":"The assistant could not process this message."}`. Cart changes made by tools earlier in the turn stay applied: commerce-api is the truth, and `apps/web` shows them on its next refresh. |
+| 500 | `AGENT_FAILED` | The agent could not produce a reply: the model or a graph step failed, the result (reply or UI command batch) failed validation, the model was still asking for tools after the round limit, or one model message asked for more than 16 tool calls (§3.2). The body is always `{"code":"AGENT_FAILED","message":"The assistant could not process this message."}`, never `uiCommands`. Cart changes made by tools earlier in the turn stay applied: commerce-api is the truth, and `apps/web` re-reads the cart after every turn. |
 
 A tool failure (commerce-api down, an unavailable item, a bad argument) is
 **not** a turn failure. It goes back to the model as data (§3.2), and the turn
@@ -142,6 +184,58 @@ HTTP response. The error codes:
 
 Messages are fixed per code. commerce-api's own message text never reaches
 the model.
+
+### 3.3 Presentation tools (Phase 15)
+
+A second allowlist (`ui_commands/registry.py`), separate from the Commerce
+tools, with one tool per `@contracts/ui-commands` command. A presentation
+tool does no I/O and changes no state. It validates its arguments and
+records one UI command for the response.
+
+| Tool | Arguments | UI command |
+| --- | --- | --- |
+| `show_menu_category` | `categoryId` (slug, 1–64) | `ShowMenuCategory` |
+| `highlight_item` | `itemId` (slug, 1–64) | `HighlightItem` |
+| `open_cart_panel` | `open` (boolean) | `OpenCartPanel` |
+| `show_item_detail` | `itemId` (slug, 1–64) | `ShowItemDetail` |
+| `search_menu` | `query` (0–200 characters) | `SearchMenu` |
+
+- **Arguments are the command's fields without `type`**, taken from the
+  generated model. They are strict: unknown keys are rejected and there is
+  no coercion (`"true"` is not a boolean). No argument can name a URL,
+  route, selector, component, script or price.
+- **What the model reads** is `{"ok": true}`, or the §3.2 error shape with
+  `INVALID_TOOL_ARGUMENTS`, `UNKNOWN_TOOL` or `TOOL_CALL_LIMIT_EXCEEDED`.
+  The command itself travels beside the tool message (as its `artifact`),
+  never in the model's context.
+- **Not adopted:** `OpenCheckout` (a declined candidate) and
+  `ShowOrderConfirmation` (rejected outright). No command can claim a cart
+  change succeeded.
+- **Limits:** presentation calls count toward the same 8 calls per turn as
+  Commerce calls. A refused call records nothing.
+- **No overlap:** a tool name registered in both lists stops the graph from
+  being built.
+- `ui_commands/` never imports the Commerce client or registry
+  (`tests/test_boundaries.py`).
+
+### 3.4 Business intents (Phase 15)
+
+Each write tool performs exactly one `@contracts/agent-intents` intent,
+through a fixed map in `tools/intents.py`:
+
+| Tool | Intent | Route |
+| --- | --- | --- |
+| `add_cart_item` | `AddItemToCart` | `POST /v1/cart/items` |
+| `set_cart_item_quantity` | `SetCartItemQuantity` | `PATCH /v1/cart/items/{itemId}` |
+| `remove_cart_item` | `RemoveItemFromCart` | `DELETE /v1/cart/items/{itemId}` |
+
+A write's arguments are validated as the tool's input, then as that
+generated intent (`ai_service/contracts/agent_intents.py`, strict), and the
+handler receives the intent. Reads perform no intent. The model picks a tool
+from the allowlist; it can never name an intent, and no intent has a tool
+unless it is in this map (`PlaceOrder` and `ClearCart` have none). Intent
+envelopes (`idempotencyKey`, …) are still not sent: no commerce-api route
+accepts one.
 
 ## 4. Response body
 
@@ -212,13 +306,16 @@ Each agent turn adds one line from the `ai_service.agent` logger:
 
 | Message | Level | Fields |
 | --- | --- | --- |
-| `agent turn completed` | INFO | `outcome: "ok"`, `duration_ms`, `message_chars`, `reply_chars`, `tool_calls`, `tool_rounds` |
+| `agent turn completed` | INFO | `outcome: "ok"`, `duration_ms`, `message_chars`, `reply_chars`, `tool_calls`, `tool_rounds`, `ui_commands` (how many were returned) |
 | `agent turn failed` | WARNING | `outcome: "failed"`, `duration_ms`, `message_chars`, `error_type` (the exception's class name) |
 
 Each tool call adds one line from the `ai_service.tools` logger: `tool call
-completed` or `tool call failed`, with `tool`, `category` (`read`/`write`),
-`outcome`, `error_code`, `commerce_status` (the HTTP status when a failed
-call got a response, otherwise `null`) and `duration_ms`. It is logged at WARNING for
+completed` or `tool call failed`, with `tool`, `category`
+(`read`/`write`/`ui`), `intent` (a write's intent name, such as
+`AddItemToCart`; otherwise `null`), `outcome`, `error_code`,
+`commerce_status` (the HTTP status when a failed call got a response,
+otherwise `null`) and `duration_ms`. Presentation tools write the same line,
+with category `ui`. It is logged at WARNING for
 `COMMERCE_REQUEST_REJECTED`, `COMMERCE_BAD_RESPONSE` and a missing route (a
 wrong `COMMERCE_API_URL`), and at INFO otherwise. A tool name that is not
 registered is logged as `<unregistered>`.
@@ -242,6 +339,6 @@ ready for yet (ADR-0019).
 
 ## 9. Not covered
 
-A real model provider, conversation memory, business-intent envelopes, UI
-commands, order tools, retries, streaming, authentication, rate limiting and
-CORS.
+A real model provider, conversation memory, business-intent envelopes,
+order tools, retries, streaming (turns are one synchronous request,
+ADR-0022), authentication, rate limiting and CORS.

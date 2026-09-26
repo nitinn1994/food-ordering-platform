@@ -3,6 +3,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { z } from "zod";
 import { uiCommandBatchSchema } from "../src/envelope.ts";
+import {
+  agentTurnRequestSchema,
+  agentTurnResponseSchema,
+} from "../src/agentTurn.ts";
 
 // See packages/contracts/common/scripts/emit-schema.ts for the rationale —
 // this file follows the identical pattern.
@@ -22,6 +26,17 @@ export const ARTIFACTS: readonly Artifact[] = [
     file: "ui-command.v1.json",
     id: "urn:food-ordering-platform:contracts:ui-commands:batch:v1",
     schema: uiCommandBatchSchema,
+  },
+  // POST /v1/agent/turns (docs/features/phase-15-ai-ui-commands/plan.md §7).
+  {
+    file: "agent-turn-request.v1.json",
+    id: "urn:food-ordering-platform:contracts:ui-commands:agent-turn-request:v1",
+    schema: agentTurnRequestSchema,
+  },
+  {
+    file: "agent-turn-response.v1.json",
+    id: "urn:food-ordering-platform:contracts:ui-commands:agent-turn-response:v1",
+    schema: agentTurnResponseSchema,
   },
 ];
 

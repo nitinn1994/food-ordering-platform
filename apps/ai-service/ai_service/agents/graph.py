@@ -7,7 +7,9 @@ The first conditional edge, which Phase 13 reserved for tools. The loop is
 bounded three ways: MAX_TOOL_ROUNDS (routing), MAX_TOOL_CALLS_PER_TURN
 (execute_tools), and RECURSION_LIMIT as LangGraph's backstop.
 tests/test_agent_graph.py pins the nodes and edges, so a change to the shape
-is a visible decision.
+is a visible decision. Phase 15 does not change the shape: the model is bound
+to the Commerce tools and the presentation tools (plan.md section 9), and
+``execute_tools`` routes each call to its own registry.
 """
 
 from langchain_core.language_models import BaseChatModel
@@ -25,6 +27,7 @@ from ai_service.agents.nodes import (
 )
 from ai_service.agents.state import AgentState
 from ai_service.tools.service import ToolService
+from ai_service.ui_commands import PresentationToolService
 
 CALL_MODEL = "call_model"
 
@@ -46,10 +49,24 @@ RECURSION_LIMIT = 2 * MAX_TOOL_ROUNDS + 4
 AgentGraph = CompiledStateGraph[AgentState, None, AgentState, AgentState]
 
 
-def build_agent_graph(model: BaseChatModel, tool_service: ToolService) -> AgentGraph:
+def build_agent_graph(
+    model: BaseChatModel,
+    tool_service: ToolService,
+    presentation_service: PresentationToolService,
+) -> AgentGraph:
+    commerce_schemas = tool_service.tool_schemas()
+    commerce_names = {schema["function"]["name"] for schema in commerce_schemas}
+    # One name, one registry: otherwise execute_tools would silently route a
+    # Commerce call to a presentation tool (plan.md AC8).
+    overlap = commerce_names & presentation_service.names()
+    if overlap:
+        raise ValueError(f"tool names in both registries: {sorted(overlap)}")
+    schemas = [*commerce_schemas, *presentation_service.tool_schemas()]
     builder = StateGraph(AgentState)
-    builder.add_node(CALL_MODEL, make_call_model(model, tool_service.tool_schemas()))
-    builder.add_node(EXECUTE_TOOLS, make_execute_tools(tool_service))
+    builder.add_node(CALL_MODEL, make_call_model(model, schemas))
+    builder.add_node(
+        EXECUTE_TOOLS, make_execute_tools(tool_service, presentation_service)
+    )
     builder.add_node(FINALIZE_REPLY, finalize_reply)
     builder.add_edge(START, CALL_MODEL)
     builder.add_conditional_edges(

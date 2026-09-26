@@ -27,6 +27,8 @@ SENTINEL = "sentinel-log-a91f"  # a valid item id, so a call can carry it
 FIELDS = {
     "tool",
     "category",
+    # Phase 15: a write's business intent; None for reads and UI tools.
+    "intent",
     "outcome",
     "error_code",
     "commerce_status",
@@ -55,6 +57,7 @@ def test_successful_call_logs_one_record(caplog: pytest.LogCaptureFixture) -> No
     assert record.levelno == logging.INFO
     assert fields["tool"] == "get_cart"
     assert fields["category"] == "read"
+    assert fields["intent"] is None
     assert fields["outcome"] == "ok"
     assert fields["error_code"] is None
     assert fields["commerce_status"] is None

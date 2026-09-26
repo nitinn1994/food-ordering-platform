@@ -21,7 +21,9 @@ export const COMMERCE_ERROR_CODES = {
   IDEMPOTENCY_KEY_REUSED: "IDEMPOTENCY_KEY_REUSED",
 } as const;
 
-export type MessageContext = "cart" | "order";
+// "agent": a chat turn to ai-service (Phase 15). Its failures reuse the
+// kind-based copy below; only a rejected message has copy of its own.
+export type MessageContext = "cart" | "order" | "agent";
 
 export const UNREACHABLE_MESSAGE =
   "We can't reach the restaurant right now. Check your connection and try again.";
@@ -54,6 +56,11 @@ const CODE_MESSAGES: Record<MessageContext, Partial<Record<string, string>>> = {
     [COMMERCE_ERROR_CODES.CART_EMPTY]: "Your cart is empty.",
     [COMMERCE_ERROR_CODES.IDEMPOTENCY_KEY_REUSED]:
       "Please review your details and place the order again.",
+  },
+  agent: {
+    // ai-service rejected the message itself (docs/api/ai-service.md §3.1).
+    [COMMERCE_ERROR_CODES.INVALID_PAYLOAD]:
+      "I couldn't read that message. Please try rephrasing it.",
   },
 };
 

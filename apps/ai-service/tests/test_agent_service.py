@@ -12,7 +12,7 @@ from ai_service.agents.graph import RECURSION_LIMIT, AgentGraph, build_agent_gra
 from ai_service.agents.service import MAX_REPLY_LENGTH, AgentResult, AgentService
 from ai_service.core.logging import JsonFormatter
 from ai_service.llm.simulated import SIMULATED_REPLY, SimulatedChatModel
-from tests.commerce_fakes import FakeCommerce
+from tests.commerce_fakes import FakeCommerce, presentation_service
 from tests.fakes import (
     MODEL_EXCEPTION_SENTINEL,
     RaisingChatModel,
@@ -27,7 +27,9 @@ REPLY_SENTINEL = "SENTINEL_REPLY_08be"
 
 
 def service_for(model: BaseChatModel) -> AgentService:
-    return AgentService(build_agent_graph(model, FakeCommerce().tool_service()))
+    return AgentService(
+        build_agent_graph(model, FakeCommerce().tool_service(), presentation_service())
+    )
 
 
 class StubGraph:
@@ -163,12 +165,15 @@ def test_success_writes_one_completion_line_without_content(
         "reply_chars",
         "tool_calls",
         "tool_rounds",
+        "ui_commands",
     }
     assert fields["outcome"] == "ok"
     assert fields["message_chars"] == len(SENTINEL_MESSAGE)
     assert fields["reply_chars"] == len(SIMULATED_REPLY)
-    # The simulated model never calls a tool (Phase 14 plan.md OD5).
+    # A message matching none of the simulated model's keywords calls no
+    # tool and emits no UI command (Phase 15 plan.md OD6).
     assert (fields["tool_calls"], fields["tool_rounds"]) == (0, 0)
+    assert fields["ui_commands"] == 0
     assert SENTINEL_MESSAGE not in rendered(caplog)
     assert SIMULATED_REPLY not in rendered(caplog)
 

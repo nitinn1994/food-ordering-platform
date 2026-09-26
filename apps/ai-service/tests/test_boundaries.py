@@ -22,6 +22,13 @@ Tool definitions (``langchain_core.tools``) and ToolNode
 registry. One URL setting, ``commerce_api_url``, is exempt from the setting
 name rule by name.
 
+Phase 15 (docs/features/phase-15-ai-ui-commands/plan.md sections 5, 9 and
+18) added ``ui_commands/``, the presentation tools. They must never reach
+commerce-api: the package imports neither the Commerce client nor the
+Commerce tool registry, only the generated contracts and the shared tool
+error vocabulary (``tools/results.py``). ``tools/`` never imports it back:
+the two registries stay separate.
+
 A later phase that legitimately adds a dependency or lifts a ban changes the
 allowlists here in the same reviewed change - that is the point: the
 dependency becomes a visible decision, never a side effect.
@@ -98,10 +105,18 @@ LOCATION_SCOPED = {
 # depend on nothing of ours.
 LAYER_FORBIDDEN = {
     "agents": {"clients"},
-    "tools": {"agents", "api", "llm"},
-    "clients": {"agents", "api", "llm", "tools"},
-    "contracts": {"agents", "api", "clients", "core", "llm", "schemas", "tools"},
-}
+    "tools": {"agents", "api", "llm", "ui_commands"},
+    "clients": {"agents", "api", "llm", "tools", "ui_commands"},
+    "contracts": {
+        "agents", "api", "clients", "core", "llm", "schemas", "tools", "ui_commands",
+    },
+    "ui_commands": {"agents", "api", "clients", "core", "llm", "schemas"},
+}  # fmt: skip
+
+# The only modules of ai_service/tools/ that ui_commands/ may import: the
+# shared error codes and messages. Never tools/registry.py or
+# tools/service.py, which reach the Commerce client (Phase 15, AC7).
+UI_COMMANDS_ALLOWED_TOOLS_IMPORTS = {"ai_service.tools.results"}
 
 FORBIDDEN_SETTING_NAME = re.compile(r"database|(^|_)db(_|$)|_url$|api_key|secret|token")
 # Exempt by exact name, never by pattern: the Commerce API's base URL
@@ -227,6 +242,9 @@ IMPORT_TIME_FORBIDDEN_CALLS = {
     "CommerceClient",
     "build_tool_registry",
     "ToolService",
+    # Phase 15: one presentation registry and service per app.
+    "build_presentation_registry",
+    "PresentationToolService",
 }
 
 
@@ -371,3 +389,38 @@ def test_setting_name_rule_exempts_only_the_commerce_api_url() -> None:
     assert _is_forbidden_setting("commerce_api_callback_url")
     assert _is_forbidden_setting("commerce_api_token")
     assert _is_forbidden_setting("commerce_api_key")
+
+
+def test_ui_commands_never_reach_the_commerce_tools_or_client() -> None:
+    sources = sorted((PACKAGE_ROOT / "ui_commands").rglob("*.py"))
+    assert sources, "no ui_commands sources found"
+
+    tools_imports = {
+        module
+        for path in sources
+        for module in _imported_modules(path)
+        if module == "ai_service.tools" or module.startswith("ai_service.tools.")
+    }
+    reaches_commerce = {
+        module
+        for path in sources
+        for module in _imported_modules(path)
+        if module.startswith(("ai_service.clients", "httpx"))
+    }
+
+    # "from ai_service.tools.results import X" also records
+    # ai_service.tools.results.X: only the results module itself counts.
+    assert {m for m in tools_imports if m.count(".") <= 2} <= (
+        UI_COMMANDS_ALLOWED_TOOLS_IMPORTS
+    )
+    assert reaches_commerce == set()
+
+
+def test_ui_commands_layer_matcher() -> None:
+    assert _crosses_layer(Path("ui_commands/service.py"), "ai_service.clients")
+    assert _crosses_layer(Path("ui_commands/service.py"), "ai_service.agents.nodes")
+    assert _crosses_layer(Path("tools/service.py"), "ai_service.ui_commands")
+    assert not _crosses_layer(
+        Path("ui_commands/service.py"), "ai_service.contracts.ui_commands"
+    )
+    assert not _crosses_layer(Path("agents/nodes.py"), "ai_service.ui_commands")
