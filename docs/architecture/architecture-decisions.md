@@ -37,6 +37,7 @@ made, and what they cost.
 | [0016](#adr-0016--order-domain-snapshot-at-placement-cart-consumed-at-the-priced-version-idempotent-creation-in-memory-storage) | Order domain: snapshot at placement, cart consumed at the priced version, idempotent creation, in-memory storage | Accepted |
 | [0017](#adr-0017--postgresql-behind-the-repository-ports-kysely-migrations-and-one-transaction-for-order-placement) | PostgreSQL behind the repository ports: Kysely, migrations, and one transaction for order placement | Accepted |
 | [0018](#adr-0018--apps-web-on-commerce-api-a-same-origin-proxy-one-api-client-and-server-state-without-a-new-library) | `apps/web` on commerce-api: a same-origin proxy, one API client, and server state without a new library | Accepted |
+| [0019](#adr-0019--ai-service-foundation-uv-fastapi-the-commerce-api-error-and-correlation-model-and-tested-boundaries) | ai-service foundation: uv, FastAPI, the commerce-api error and correlation model, and tested boundaries | Accepted |
 
 ---
 
@@ -256,6 +257,9 @@ chose Vitest for `apps/web` at approval time, before this ADR was ever marked
 Accepted — it was implemented while still sitting at `Proposed`. This entry
 was left stale until sub-phase 2.1 corrected it. See ADR-0008 for the
 decision actually in force.
+
+**Phase 12 note:** the Python half, pytest for `apps/ai-service`, is in force
+(ADR-0019).
 
 ---
 
@@ -1273,3 +1277,149 @@ order identity) contradicted the authority model in
   retried it — which `apps/web` never does. Browser e2e remains unconfigured
   (OD14).
 
+
+---
+
+## ADR-0019 — ai-service foundation: uv, FastAPI, the commerce-api error and correlation model, and tested boundaries
+
+**Status:** Accepted · **Date:** 2026-09-26 (Phase 12) · **Decisions:**
+`docs/features/phase-12-ai-service-foundation/plan.md` §24, OD1–OD16,
+approved as recommended
+
+### Context
+
+`apps/ai-service` was an empty directory (ADR-0001). Every later AI phase
+needs somewhere to run: LangGraph orchestration, Commerce API tools, intents,
+UI commands, RAG and voice. Phase 12 builds that foundation and no AI
+behaviour. commerce-api had already answered the same foundation questions
+for TypeScript (ADR-0013), so this phase follows those answers wherever
+Python allows. A caller then sees one error model and one correlation model
+across both services. The machine had Python 3.12.3 with no `pip`, no
+`ensurepip`, and no uv or Poetry.
+
+### Decision
+
+1. **Toolchain: uv, a PEP 621 `pyproject.toml` and a committed `uv.lock`**
+   (OD1). The project is unpackaged (`[tool.uv] package = false`): it is an
+   application, not a library. Python is pinned to 3.12
+   (`.python-version`, `requires-python = ">=3.12,<3.13"`, OD2). It stays
+   outside the pnpm workspace and Turborepo (ADR-0002): there is no
+   `package.json` and no root script. uv (0.12.19) was installed by the
+   official installer with the human's go-ahead.
+2. **Layout: the `ai_service/` package at the app root** (OD3), with `api/`
+   (HTTP only), `core/` (errors, logging, request context), `schemas/` (HTTP
+   models only), `config.py` and `main.py`. `create_app(settings)` is the one
+   place HTTP behaviour is wired; `__main__.py` and every test call it (the
+   ADR-0013 §4 lesson). Future packages (`llm/`, `agents/`, `tools/`,
+   `clients/commerce/`, …) sit beside `api/`, and none are created before a
+   phase needs them.
+3. **Configuration: a frozen Pydantic model over `os.environ`**, with no
+   config library (OD4, mirroring ADR-0013 §7). It reads only its own five
+   variables (`APP_ENV`, `HOST`, `PORT`, `LOG_LEVEL`, `LOG_FORMAT`). It is
+   validated in `__main__` before uvicorn starts. An invalid value exits 1,
+   naming the variable and the Pydantic error type and never the value
+   (`errors(include_input=False)`). Every variable has a default, so no
+   `.env` is needed. `uv run --env-file .env` loads one when present. uv
+   refuses a missing `--env-file` (verified), so that form is the optional
+   variant, not the default command.
+4. **No provider abstraction, no provider config, no Commerce API URL, no
+   CORS, no readiness endpoint** (OD6, OD7, OD8, OD11). Nothing would use
+   them. LangChain's own chat-model interface is the expected provider
+   abstraction, and one written now would be a guess (the same reasoning as
+   ADR-0007). Future browser access goes through `apps/web`'s proxy
+   (ADR-0018).
+5. **Errors: every error body is a `@contracts/common` `ContractError`**
+   (OD9, OD10):
+
+   | Case | Status | Code |
+   | --- | --- | --- |
+   | Validation failure | 400 | `INVALID_PAYLOAD` |
+   | No matching route | 404 | `ROUTE_NOT_FOUND` |
+   | Wrong method | 405 | `METHOD_NOT_ALLOWED` |
+   | Any other HTTP error | its own | `HTTP_ERROR` |
+   | Anything unexpected | 500 | `INTERNAL_ERROR` |
+
+   Service errors use the `AiServiceError` base, which carries its own code.
+   The model (`schemas/errors.py`) is **hand-written — a scoped, guarded
+   exception to ADR-0003**. A test validates every error body against the
+   committed `packages/contracts/common/schema/error.v1.json` and checks the
+   model's bounds against it, so drift fails the suite. It was confirmed able
+   to fail. The Zod → JSON Schema → Pydantic codegen stays deferred to the
+   first phase that consumes a contract family (intents or UI commands).
+   That phase also answers ADR-0012's open discriminated-union question.
+6. **Request context: a pure ASGI middleware, outermost** among user
+   middleware. It follows commerce-api's `X-Request-Id` / `X-Correlation-Id`
+   rules (`docs/api/commerce-api.md` §7), with one deliberate tightening. An
+   inbound correlation id is echoed only if it is also visible ASCII
+   (`0x21`–`0x7E`); anything else is replaced. The value goes into a
+   response header, where control characters are not allowed. This is
+   stricter than `correlationIdSchema` (security review S1). **It sends the
+   500 response
+   itself**, because Starlette sends unhandled-error responses from
+   `ServerErrorMiddleware`, outside every user middleware. This is the same
+   class of ordering gap as ADR-0013's 413, and the header test for the 500
+   path was written before the code.
+7. **Logging: stdlib `logging` with its own JSON formatter** (OD16). A
+   `contextvars` filter attaches `request_id` / `correlation_id` to every
+   line. Each request adds one completion line with no query string.
+   Uvicorn's loggers go through the same handler, and its access log is off.
+8. **Only `/health`** (OD5): liveness, unversioned, `{"status":"ok"}`.
+   Future routes go under `/v1`. The OpenAPI docs are served only when
+   `APP_ENV=development` (OD12). The default port is 3002 (OD14).
+9. **Tooling: Ruff (lint + format) and mypy strict, on the service and the
+   tests** (OD13). `jsonschema` has a mypy `ignore_missing_imports` override
+   instead of a stub package.
+10. **Tested boundaries.** `tests/test_boundaries.py` enforces:
+    - runtime and dev dependency allowlists
+    - an AST scan forbidding imports of database drivers and ORMs, model
+      SDKs, LangChain/LangGraph, HTTP clients and `tests` from the service
+      package
+    - no setting named like a database URL or a credential
+
+    Both failure modes were shown to fail. **No Docker** (OD15): Compose
+    stays PostgreSQL-only.
+
+### Rules this sets for later AI phases
+
+- A secret is a `pydantic.SecretStr` setting. It never appears in a log line,
+  an error message or a response.
+- Prompts, completions, customer utterances, headers, bodies and query
+  strings are never logged unless a phase explicitly approves it.
+- **Internal validation must not leak input into logs** (security review
+  S2). A Pydantic `ValidationError`'s message contains the rejected input.
+  If one escapes to the last-resort 500 handler, its traceback, input
+  included, is logged. So any internal code that validates untrusted,
+  customer or model-generated data must either catch `ValidationError` and
+  raise an `AiServiceError`, or log only `errors(include_input=False)`. The
+  first phase that parses model output or customer utterances adds a test
+  proving it (a sentinel input, absent from the log).
+- Provider SDKs are imported only under `ai_service/llm/`. The boundary test
+  is widened to say exactly that, in the same change that adds the first
+  provider.
+- Liveness never depends on a model provider or on commerce-api.
+- **When httpx becomes a runtime dependency** (the Commerce API client),
+  `configure_logging` must raise the `httpx` and `httpcore` loggers to
+  `WARNING`. At `INFO`, httpx logs every full request URL, query string
+  included. This was observed in Phase 12's own test client.
+- "Resource not found" is an `AiServiceError` with its own code, never a bare
+  `HTTPException(404)`, which maps to `ROUTE_NOT_FOUND`.
+- The first route that accepts a body adds a body-size limit and a JSON
+  content-type guard, like commerce-api's.
+
+### Consequences
+
+- **Two command sets and no CI** (ADR-0002's cost, now real). `pnpm turbo run
+  …` does not run the Python checks. `getting-started.md` lists both side by
+  side.
+- **The ADR-0003 exception is narrow but real.** One shape is hand-written.
+  It is guarded, not generated. If a second shared shape is needed before
+  codegen exists, this exception must not quietly widen. That is the point
+  at which to build the pipeline.
+- **The unhandled-error path cannot be exercised live**, because no shipped
+  route raises on purpose. It is covered in-process by test-only routes
+  (`tests/fixtures_routes.py`), which run through the same `create_app`.
+- **Starlette 1.7 deprecates httpx for its `TestClient`** in favour of
+  `httpx2`. The warning is recorded as follow-up, not acted on.
+- **§4.1 of `system-architecture.md` is now partly mechanical.** A test
+  refuses a database driver in the AI service. There is still no network or
+  credential separation (§8, gap 2).

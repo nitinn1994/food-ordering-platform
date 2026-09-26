@@ -1,6 +1,6 @@
 # Getting Started
 
-**Last updated:** 2026-09-26 (Phase 11, sub-phase 11.5)
+**Last updated:** 2026-09-26 (Phase 12, sub-phase 12.4)
 **Status:** `apps/web`, all four of `packages/contracts/{common,ui-commands,
 agent-intents,api-contracts}`, and `apps/commerce-api` are scaffolded and
 working — Phase 1 (frontend foundation), Phase 2 (menu browsing: search, item
@@ -23,7 +23,10 @@ a required key) and Phase 10 (database persistence: PostgreSQL behind the
 existing repository interfaces, migrations, a menu seed, and one
 transaction for order placement — ADR-0017) are all complete. Nothing
 calls the Commerce API yet — `apps/web` still uses its own fixture and
-local cart. `apps/ai-service` does not exist yet.
+local cart. Phase 12 (Python AI service foundation: FastAPI, validated
+configuration, commerce-api's error and correlation model, JSON logging,
+`GET /health` and tested boundaries, with no AI behaviour, ADR-0019) is
+complete too, so `apps/ai-service` is scaffolded and working.
 
 ---
 
@@ -42,11 +45,11 @@ same change. A scaffolding phase that leaves this file stale has not finished.
 
 | | |
 | --- | --- |
-| Applications | `apps/web` — Next.js, TypeScript, working; since Phase 11 its menu, cart and orders come from `commerce-api` through a same-origin proxy (ADR-0018). `apps/commerce-api` — NestJS, TypeScript, working (Phase 6 foundation + Phase 7 read-only Menu domain + Phase 8 Cart domain + Phase 9 Order domain + Phase 10 PostgreSQL persistence). `apps/ai-service` — empty directory, not scaffolded. |
+| Applications | `apps/web` — Next.js, TypeScript, working; since Phase 11 its menu, cart and orders come from `commerce-api` through a same-origin proxy (ADR-0018). `apps/commerce-api` — NestJS, TypeScript, working (Phase 6 foundation + Phase 7 read-only Menu domain + Phase 8 Cart domain + Phase 9 Order domain + Phase 10 PostgreSQL persistence). `apps/ai-service` — Python 3.12 + FastAPI, working (Phase 12 foundation only: no AI behaviour, no Commerce API calls; outside the pnpm workspace — ADR-0002, ADR-0019). |
 | Shared packages | `packages/contracts/common`, `ui-commands`, `agent-intents`, `api-contracts` — Zod schemas, all working, each with committed generated JSON Schema. `api-contracts` gained its first producer in Phase 7 (`commerce-api`'s Menu domain) and its first request schemas in Phase 8 (Cart). |
-| Dependency manifests | Root `package.json` + `pnpm-workspace.yaml` (pnpm + Turborepo, ADR-0002); `apps/web/package.json`; `apps/commerce-api/package.json`; one `package.json` per `packages/contracts/*` package. |
+| Dependency manifests | Root `package.json` + `pnpm-workspace.yaml` (pnpm + Turborepo, ADR-0002); `apps/web/package.json`; `apps/commerce-api/package.json`; one `package.json` per `packages/contracts/*` package. `apps/ai-service/pyproject.toml` + committed `uv.lock` (uv; not a pnpm package — ADR-0019). |
 | Build tooling | Turborepo (`turbo.json`), TypeScript (`tsconfig.base.json`), ESLint flat config (`eslint.config.mjs`, enforcing `apps/web`'s `agent-intents` import restriction — ADR-0012 — and `apps/commerce-api`'s `ui-commands`/`apps/web` import restriction — ADR-0013), Vitest per package. Each contracts package also has a `build` script (`scripts/emit-schema.ts`) that generates its committed JSON Schema; `packages/contracts/tools/` holds a small Node module hook those scripts use, and only they use. `apps/commerce-api`'s own `build` is `vite build` (SSR mode) — a different mechanism, since it produces a runnable service, not a JSON Schema artifact (ADR-0013). |
-| CI | None. `apps/ai-service` will need its own invocation path when it exists — see ADR-0002's residual risk. |
+| CI | None. `apps/ai-service`'s checks are not part of `turbo run`: they are run separately (below). This is ADR-0002's residual risk, now real. |
 | Git | Repository initialised; commits exist (this file is touched on every phase, this line just tracked reality late — see Phase 7's follow-up notes). |
 
 ## Prerequisites
@@ -57,7 +60,8 @@ Verified working with:
 | --------- | ----------------- | --------- |
 | Node.js | v24.19.0 | `.nvmrc`, `package.json` `engines` (`>=20.9.0`) |
 | pnpm | 12.3.4 | `package.json` `packageManager` |
-| Python | not yet installed or needed | `apps/ai-service` does not exist yet |
+| Python | 3.12.3 (system `python3.12`; uv installs 3.12 itself if it is missing) | `apps/ai-service/.python-version`, `pyproject.toml` `requires-python = ">=3.12,<3.13"` |
+| uv | 0.12.19 | not pinned. Installed with the official installer (`curl -LsSf https://astral.sh/uv/install.sh \| sh`, into `~/.local/bin`). Needed only for `apps/ai-service`. |
 | Docker (with Compose) | Docker Engine 29.7.2 (Docker Desktop), Compose v5.4.0 | not pinned — only needed for the local PostgreSQL (`db:up`), which `dev`, `start` and `test:db` require; `pnpm turbo run test` does not |
 
 ## Commands
@@ -143,11 +147,36 @@ detail.
 
 `packages/contracts/{common,ui-commands,agent-intents,api-contracts}` have
 no `dev`/`start` command — they are libraries, not runnable services.
-`apps/ai-service` has no commands at all, because it does not exist:
+### `apps/ai-service` (Phase 12)
+
+Run from `apps/ai-service/`. These commands are **not** part of
+`pnpm turbo run …` (the service is outside the pnpm workspace, ADR-0002), so
+run them separately. All were verified on 2026-09-26 (Phase 12, sub-phase 12.4).
 
 | Task | Command | Status |
 | ---- | ------- | ------ |
-| `apps/ai-service` — anything | — | `NOT_CONFIGURED` |
+| Install | `uv sync` (`uv sync --locked` proves `uv.lock` is current) | Verified. It also rebuilds from a deleted `.venv`. |
+| Test | `uv run pytest` | Verified: 84 tests. Needs no `.env`, no commerce-api, no database and no network (also run with no network interface up). One warning, not a failure: Starlette's `httpx` → `httpx2` deprecation for `TestClient`. |
+| Lint | `uv run ruff check .` | Verified |
+| Format check | `uv run ruff format --check .` | Verified |
+| Type check | `uv run mypy` | Verified (strict, service and tests) |
+| Run in development | `uv run python -m ai_service --reload` | Verified. Serves on http://127.0.0.1:3002 (loopback only). `GET /health` returns `200 {"status":"ok"}`. `/docs` and `/openapi.json` are served only when `APP_ENV=development` (the default). |
+| Run | `uv run python -m ai_service` | Verified. No `.env` needed, since every setting has a default. An invalid value (for example `PORT=abc`) exits 1, naming the variable, not the value. |
+| Run with a `.env` | `uv run --env-file .env python -m ai_service` | Verified form. Copy `.env.example` first: uv refuses `--env-file` when the file is missing. |
+| Build | — | `NOT_APPLICABLE`: an unpackaged application with no build step. |
+
+### Running the three apps independently
+
+None of the three needs the others in order to start:
+
+| App | Start | Needs |
+| --- | --- | --- |
+| `apps/web` | `pnpm --filter web dev` | Nothing to start. Without commerce-api, the menu shows its error state. |
+| `apps/commerce-api` | `pnpm --filter commerce-api db:up`, then `pnpm --filter commerce-api dev` | PostgreSQL (first-time setup above) |
+| `apps/ai-service` | `cd apps/ai-service && uv run python -m ai_service --reload` | Nothing. It calls no other service yet. |
+
+`apps/web` does not call `apps/ai-service` yet; the chat still uses
+`src/lib/commands/simulate.ts`.
 
 `NOT_CONFIGURED` means the project has no such check set up. It does not mean
 passing, and it does not mean failing. See `.claude/rules/validation.md` for
@@ -194,7 +223,14 @@ apps/
                               filter.ts (category + query, AND semantics)
     src/lib/fixtures/        menu.ts (temporary)
     src/lib/money.ts         integer-cents formatting
-  ai-service/     Python service — not yet scaffolded
+  ai-service/     Python service — scaffolded, working (Phase 12 foundation;
+                   uv, FastAPI; outside the pnpm workspace — ADR-0019)
+    ai_service/               __main__.py (validate config → logging →
+                              uvicorn), main.py (create_app), config.py,
+                              api/ (health), core/ (errors, logging,
+                              request_context), schemas/ (HTTP models)
+    tests/                    pytest; fixtures_routes.py = test-only routes;
+                              test_boundaries.py = no DB/LLM/HTTP-client deps
   commerce-api/   NestJS service — scaffolded, working (Phase 6 foundation +
                    Phase 7 read-only Menu, Phase 8 Cart, Phase 9 Order)
     src/main.ts               bootstrap: parse env, fail-fast, build logger,
@@ -421,7 +457,10 @@ client, a cart provider that holds only the backend's cart, and checkout
 placing real, idempotent orders (ADR-0018).
 
 Payment, authentication, and order status changes are not planned yet.
-`apps/ai-service` remains unplanned too — with commerce state now owned end
-to end by commerce-api, it is the natural next phase.
+Phase 12 (sub-phases 12.1–12.4) built the `apps/ai-service` foundation
+(ADR-0019), with no AI behaviour. The natural next AI phase is the first
+real capability on top of it: a Commerce API client and LangGraph
+orchestration. That phase will also need the Pydantic codegen ADR-0019
+deferred, and the logging rules ADR-0019 records for httpx and secrets.
 
 Start planning any of them with `/forge`, which will route it to `/plan`.

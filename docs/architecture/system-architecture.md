@@ -16,7 +16,7 @@
 | Component | Stack | Owns | Must never |
 | --------- | ----- | ---- | ---------- |
 | `apps/web` | Next.js, TypeScript | Rendering, voice/text/touch input, cart presentation, UI command execution | Execute AI-generated code; treat agent text as authoritative for price, totals, or availability |
-| `apps/ai-service` | Python, LangChain, LangGraph | Conversation state, tool selection, structured intent generation, natural-language explanations | Touch the database; mutate cart or order state directly |
+| `apps/ai-service` | Python 3.12, FastAPI (Phase 12, ADR-0019); LangChain, LangGraph in later phases | Conversation state, tool selection, structured intent generation, natural-language explanations | Touch the database; mutate cart or order state directly |
 | `apps/commerce-api` | NestJS, TypeScript | Menu, cart, order, pricing, business validation, authorization, idempotency | Depend on conversation history as a source of truth |
 | `packages/contracts` | TypeScript (Zod) → JSON Schema → Pydantic | The three schema families below; the shared vocabulary of the system | Contain business logic, runtime behaviour, or transport code |
 | Database | PostgreSQL, accessed through Kysely (ADR-0017, Phase 10) | Durable commerce state: menu, carts, orders | Be reachable by anything except `commerce-api` |
@@ -207,8 +207,11 @@ written twice by hand. Every contract package commits its generated JSON
 Schema under `schema/*.v1.json`, guarded by a test that regenerates each
 artifact in memory and fails if the committed file has drifted — the
 enforcement available in the absence of a CI pipeline to run codegen in
-(ADR-0012). Pydantic generation itself is not yet built; it is future work
-for whichever phase creates `apps/ai-service`.
+(ADR-0012). Pydantic generation itself is not yet built. Phase 12 created
+`apps/ai-service` but consumes no contract family, so the codegen is deferred
+to the first phase that does. Its one shared shape, the `ContractError`
+error body, is a hand-written Pydantic model tested against the committed
+`common/schema/error.v1.json`: a scoped, guarded exception (ADR-0019).
 
 ## 7. Deliberately absent
 
@@ -237,6 +240,11 @@ Recorded rather than solved, because solving them is not Phase 0 work:
    10 did not change this. Only `commerce-api` has the driver and
    `DATABASE_URL`, and the local Compose port is bound to 127.0.0.1. There
    is still one database role and no network policy (ADR-0017, deferred).
+   Phase 12 made part of it testable. `apps/ai-service`'s
+   `tests/test_boundaries.py` fails if a database driver or ORM becomes a
+   dependency or is imported, or if a setting is named like a database URL
+   (ADR-0019). That is a test, not network or credential separation, so this
+   gap stays open.
 3. **Idempotency is named but undesigned.** `CLAUDE.md` requires it of
    `commerce-api`; the key strategy and retry semantics are undefined. This
    matters most where the AI service retries an intent after a timeout, which
