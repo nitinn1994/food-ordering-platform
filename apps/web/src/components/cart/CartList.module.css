@@ -17,3 +17,8 @@
   min-height: 44px;
   padding: 0.5rem 1rem;
 }
+
+.checkoutBlocked {
+  margin-top: 1rem;
+  color: #a00;
+}

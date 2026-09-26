@@ -7,7 +7,9 @@ import styles from "./SiteNav.module.css";
 
 export function SiteNav() {
   const pathname = usePathname();
-  const { itemCount } = useCart();
+  // The count appears once commerce-api has answered — never a guessed 0
+  // while the cart is still loading or could not be loaded.
+  const { itemCount, status } = useCart();
 
   return (
     <nav className={styles.nav} aria-label="Primary">
@@ -18,7 +20,7 @@ export function SiteNav() {
         href="/cart"
         aria-current={pathname === "/cart" ? "page" : undefined}
       >
-        Cart ({itemCount})
+        {status === "ready" ? `Cart (${itemCount})` : "Cart"}
       </Link>
     </nav>
   );

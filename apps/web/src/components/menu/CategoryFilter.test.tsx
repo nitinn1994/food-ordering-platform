@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CategoryFilter } from "./CategoryFilter";
 import { UiProvider } from "../../lib/state/uiStore";
-import { MENU } from "../../lib/fixtures/menu";
+import { MENU } from "../../test/fixtures/menu";
 
 function renderWithProvider() {
   return render(

@@ -1,6 +1,6 @@
 "use client";
 
-import type { MenuCategory } from "../../lib/fixtures/menu";
+import type { MenuCategory } from "@contracts/api-contracts";
 import { useUi } from "../../lib/state/uiStore";
 import { filterMenu } from "../../lib/menu/filter";
 import { MenuItemCard } from "./MenuItemCard";

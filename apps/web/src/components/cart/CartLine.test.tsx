@@ -1,30 +1,30 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { screen } from "@testing-library/react";
+import type { CartLine as CartLineData } from "@contracts/api-contracts";
 import { CartLine } from "./CartLine";
 import { CartProvider } from "../../lib/state/cartStore";
-import { findMenuItem } from "../../lib/fixtures/menu";
+import { UiProvider } from "../../lib/state/uiStore";
+import { pricedCart, renderWithCart } from "../../test/cart";
 import styles from "./CartLine.module.css";
 
-function requireMenuItem(itemId: string) {
-  const item = findMenuItem(itemId);
-  if (!item) {
-    throw new Error(`fixture missing expected item: ${itemId}`);
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function line(itemId: string, quantity: number, available?: boolean): CartLineData {
+  const [result] = pricedCart([{ itemId, quantity, available }]).items;
+  if (!result) {
+    throw new Error("pricedCart returned no line");
   }
-  return item;
+  return result;
 }
 
 describe("CartLine — AC3 (accessible remove button)", () => {
-  it("names the item in the remove button's accessible name", () => {
-    render(
-      <CartProvider>
-        <ul>
-          <CartLine
-            line={{ itemId: "tiramisu", quantity: 1 }}
-            item={requireMenuItem("tiramisu")}
-          />
-        </ul>
-      </CartProvider>,
+  it("names the item in the remove button's accessible name", async () => {
+    await renderWithCart(
+      <ul>
+        <CartLine line={line("tiramisu", 1)} />
+      </ul>,
     );
 
     expect(
@@ -32,20 +32,12 @@ describe("CartLine — AC3 (accessible remove button)", () => {
     ).toBeInTheDocument();
   });
 
-  it("distinguishes multiple lines by accessible name", () => {
-    render(
-      <CartProvider>
-        <ul>
-          <CartLine
-            line={{ itemId: "tiramisu", quantity: 1 }}
-            item={requireMenuItem("tiramisu")}
-          />
-          <CartLine
-            line={{ itemId: "garlic-bread", quantity: 2 }}
-            item={requireMenuItem("garlic-bread")}
-          />
-        </ul>
-      </CartProvider>,
+  it("distinguishes multiple lines by accessible name", async () => {
+    await renderWithCart(
+      <ul>
+        <CartLine line={line("tiramisu", 1)} />
+        <CartLine line={line("garlic-bread", 2)} />
+      </ul>,
     );
 
     expect(
@@ -58,33 +50,59 @@ describe("CartLine — AC3 (accessible remove button)", () => {
 });
 
 describe("CartLine — quantity controls and subtotal", () => {
-  it("shows the line subtotal as price × quantity", () => {
-    render(
-      <CartProvider>
-        <ul>
-          <CartLine
-            line={{ itemId: "garlic-bread", quantity: 2 }}
-            item={requireMenuItem("garlic-bread")}
-          />
-        </ul>
-      </CartProvider>,
+  it("shows the backend's line subtotal as-is (Phase 11 AC4)", async () => {
+    await renderWithCart(
+      <ul>
+        <CartLine line={{ ...line("garlic-bread", 2), lineSubtotalCents: 1111 }} />
+      </ul>,
     );
 
-    // garlic-bread is 595 cents in the fixture menu; 595 * 2 = 1190 = $11.90.
-    expect(screen.getByText("$11.90")).toBeInTheDocument();
+    expect(screen.getByText("$11.11")).toBeInTheDocument();
+  });
+
+  it("sets the absolute quantity q+1 / q-1 via PATCH (Phase 11 AC5)", async () => {
+    const { stub, user } = await renderWithCart(
+      <ul>
+        <CartLine line={line("tiramisu", 2)} />
+      </ul>,
+      {
+        replies: [
+          { body: pricedCart([{ itemId: "tiramisu", quantity: 3 }]) },
+          { body: pricedCart([{ itemId: "tiramisu", quantity: 1 }]) },
+        ],
+      },
+    );
+
+    await user.click(screen.getByRole("button", { name: "Increase quantity of Tiramisu" }));
+    await user.click(screen.getByRole("button", { name: "Decrease quantity of Tiramisu" }));
+
+    expect(stub.calls.slice(1)).toMatchObject([
+      { method: "PATCH", url: "/api/commerce/v1/cart/items/tiramisu", body: { quantity: 3 } },
+      { method: "PATCH", url: "/api/commerce/v1/cart/items/tiramisu", body: { quantity: 1 } },
+    ]);
+  });
+
+  it("removes via DELETE", async () => {
+    const { stub, user } = await renderWithCart(
+      <ul>
+        <CartLine line={line("tiramisu", 2)} />
+      </ul>,
+      { replies: [{ body: pricedCart([]) }] },
+    );
+
+    await user.click(screen.getByRole("button", { name: "Remove Tiramisu from cart" }));
+
+    expect(stub.calls[1]).toMatchObject({
+      method: "DELETE",
+      url: "/api/commerce/v1/cart/items/tiramisu",
+    });
   });
 
   it("tab order within a line is decrease, increase, then remove", async () => {
-    const user = userEvent.setup();
-    render(
-      <CartProvider>
-        <ul>
-          <CartLine
-            line={{ itemId: "tiramisu", quantity: 2 }}
-            item={requireMenuItem("tiramisu")}
-          />
-        </ul>
-      </CartProvider>,
+    const { user } = await renderWithCart(
+      <ul>
+        <CartLine line={line("tiramisu", 2)} />
+      </ul>,
     );
 
     await user.tab();
@@ -103,35 +121,45 @@ describe("CartLine — quantity controls and subtotal", () => {
     ).toHaveFocus();
   });
 
-  it("briefly highlights the line after its quantity changes", () => {
-    const { rerender, container } = render(
-      <CartProvider>
-        <ul>
-          <CartLine
-            line={{ itemId: "tiramisu", quantity: 1 }}
-            item={requireMenuItem("tiramisu")}
-          />
-        </ul>
-      </CartProvider>,
+  it("briefly highlights the line after its confirmed quantity changes", async () => {
+    const { rerender, container } = await renderWithCart(
+      <ul>
+        <CartLine line={line("tiramisu", 1)} />
+      </ul>,
     );
 
     expect(container.querySelector("li")).not.toHaveClass(
       styles.changed as string,
     );
 
+    // renderWithCart wraps in providers; rerender must too.
     rerender(
-      <CartProvider>
-        <ul>
-          <CartLine
-            line={{ itemId: "tiramisu", quantity: 2 }}
-            item={requireMenuItem("tiramisu")}
-          />
-        </ul>
-      </CartProvider>,
+      <UiProvider>
+        <CartProvider>
+          <ul>
+            <CartLine line={line("tiramisu", 2)} />
+          </ul>
+        </CartProvider>
+      </UiProvider>,
     );
 
     expect(container.querySelector("li")).toHaveClass(
       styles.changed as string,
     );
+  });
+});
+
+describe("CartLine — unavailable (Phase 11 AC8)", () => {
+  it("is labelled Unavailable, with only Remove enabled", async () => {
+    await renderWithCart(
+      <ul>
+        <CartLine line={line("tiramisu", 2, false)} />
+      </ul>,
+    );
+
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Increase quantity of Tiramisu" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Decrease quantity of Tiramisu" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Remove Tiramisu from cart" })).toBeEnabled();
   });
 });

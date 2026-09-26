@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MenuList } from "./MenuList";
@@ -6,12 +6,24 @@ import { MenuSearch } from "./MenuSearch";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import { UiProvider } from "../../lib/state/uiStore";
 import { CartProvider } from "../../lib/state/cartStore";
-import { MENU, type MenuCategory } from "../../lib/fixtures/menu";
+import type { MenuCategory } from "@contracts/api-contracts";
+import { MENU } from "../../test/fixtures/menu";
+import { installFetchStub } from "../../test/fetchStub";
+import { EMPTY_CART } from "../../test/cart";
 
 // MenuItemCard (rendered whenever a category has items) calls useCart(), so
 // any render exercising real items needs CartProvider too, not just
 // UiProvider. The empty-category case doesn't need it — it never reaches
-// MenuItemCard.
+// MenuItemCard. CartProvider loads the backend cart on mount (Phase 11), so
+// every test answers that GET with an empty cart.
+beforeEach(() => {
+  installFetchStub().reply({ body: EMPTY_CART });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
 function renderWithProviders(categories: readonly MenuCategory[]) {
   return render(
     <UiProvider>

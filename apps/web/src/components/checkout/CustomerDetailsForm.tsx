@@ -73,7 +73,11 @@ export function CustomerDetailsForm({
   onValidationFailure: () => void;
 }) {
   const summaryRef = useRef<HTMLDivElement>(null);
-  const focusPending = useRef(false);
+  // Also true on mount if the form arrives already holding errors — which
+  // only happens when commerce-api rejected a customer field and checkout
+  // returned here from review (Phase 11 AC13), so focus lands on the summary
+  // rather than falling back to <body>.
+  const focusPending = useRef(Object.keys(errors).length > 0);
 
   useEffect(() => {
     if (focusPending.current && Object.keys(errors).length > 0) {

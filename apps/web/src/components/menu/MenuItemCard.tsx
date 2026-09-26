@@ -1,13 +1,19 @@
 "use client";
 
-import type { MenuItem } from "../../lib/fixtures/menu";
+import type { MenuItem } from "@contracts/api-contracts";
 import { formatCents } from "../../lib/money";
 import { useCart } from "../../lib/state/cartStore";
 import { useUi } from "../../lib/state/uiStore";
 import styles from "./MenuItemCard.module.css";
 
+// "Add to cart" is the one cart action that sends a delta (POST, quantity
+// 1). Disabled while any cart mutation is in flight; the card whose add is
+// in flight says so (docs/features/phase-11-web-commerce-integration/
+// plan.md §4, §12). `available` is only a hint here — commerce-api is what
+// enforces it.
 export function MenuItemCard({ item }: { item: MenuItem }) {
-  const { addItem } = useCart();
+  const { addItem, pending } = useCart();
+  const isAdding = pending?.op === "add" && pending.itemId === item.id;
   const { highlightedItemId, showItemDetail } = useUi();
   const isHighlighted = item.id === highlightedItemId;
 
@@ -31,9 +37,9 @@ export function MenuItemCard({ item }: { item: MenuItem }) {
         type="button"
         className={styles.addButton}
         onClick={() => addItem(item.id)}
-        disabled={!item.available}
+        disabled={!item.available || pending !== null}
       >
-        {item.available ? "Add to cart" : "Unavailable"}
+        {!item.available ? "Unavailable" : isAdding ? "Adding…" : "Add to cart"}
       </button>
     </li>
   );

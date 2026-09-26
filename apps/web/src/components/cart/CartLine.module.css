@@ -29,3 +29,8 @@
     flex-basis: 100%;
   }
 }
+
+.unavailable {
+  color: #a00;
+  font-weight: 600;
+}

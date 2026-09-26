@@ -8,8 +8,10 @@ import type { CustomerDetails, CustomerDetailsErrors } from "./types";
 // user input. See docs/features/phase-4-frontend-checkout-simulation/plan.md
 // § Dependencies required.
 //
-// Deliberately permissive: this is a frontend simulation, not the
-// authoritative validator. commerce-api owns real validation when it exists.
+// Not the authoritative validator: commerce-api's customerDetailsSchema is,
+// on POST /v1/orders (same D4 rules). These give instant feedback; a server
+// rejection of a customer field returns the user to this form
+// (docs/features/phase-11-web-commerce-integration/plan.md §11).
 
 const MAX_NAME_LENGTH = 100;
 const MIN_PHONE_DIGITS = 7;

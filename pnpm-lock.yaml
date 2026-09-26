@@ -197,6 +197,12 @@ importers:
 
   apps/web:
     dependencies:
+      '@contracts/api-contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts/api-contracts
+      '@contracts/common':
+        specifier: workspace:*
+        version: link:../../packages/contracts/common
       '@contracts/ui-commands':
         specifier: workspace:*
         version: link:../../packages/contracts/ui-commands

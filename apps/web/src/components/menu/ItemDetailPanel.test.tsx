@@ -3,7 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ItemDetailPanel } from "./ItemDetailPanel";
 import { UiProvider, useUi } from "../../lib/state/uiStore";
-import { MENU } from "../../lib/fixtures/menu";
+import { MENU } from "../../test/fixtures/menu";
 
 function OpenDetailButton({ itemId }: { itemId: string }) {
   const { showItemDetail } = useUi();

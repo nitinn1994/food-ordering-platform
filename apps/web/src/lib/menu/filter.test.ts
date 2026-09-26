@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { filterMenu } from "./filter";
-import { MENU } from "../fixtures/menu";
+import { MENU } from "../../test/fixtures/menu";
 
 describe("filterMenu — AC9 (category + query, AND semantics)", () => {
   it("returns everything with no category and no query", () => {

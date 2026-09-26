@@ -411,5 +411,8 @@ snapshot and empties the cart. There is no payment: a new order's status is
 - **Idempotency beyond order creation** — `POST /v1/orders` is the only
   route that uses an idempotency key (§13). Everywhere else, including
   `POST /v1/cart/items`, is still `system-architecture.md` §8 gap 3.
-- **Rate limiting, CORS** — not configured; `apps/web` does not call this
-  service yet.
+- **Rate limiting, CORS** — not configured. Since Phase 11 `apps/web` does
+  call this service, but through its own same-origin proxy
+  (`/api/commerce/v1/*` → `/v1/*`), so the browser never makes a
+  cross-origin request and CORS is still not needed (ADR-0018). Nothing in
+  this service changed for it.

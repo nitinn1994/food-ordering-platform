@@ -109,6 +109,13 @@ temporary. Items 3 and 4 in particular contradict the authority model, and the
 longer they live the more code depends on the client knowing how to price
 things and mint order identities that were never validated by a backend.
 
+**Status (Phase 11): all four are resolved and deleted.** The menu comes
+from `GET /v1/menu`, the cart from the `/v1/cart` routes, every price and
+total from commerce-api's responses, and orders from `POST /v1/orders` —
+see §17 and ADR-0018. The one temporary module left in `apps/web` is the
+chat simulation (`src/lib/commands/simulate.ts`), which stands in for
+`apps/ai-service`, not for commerce-api.
+
 ## 8. Open product questions
 
 1. **Menu shape.** Categories, modifiers, variants, combos? The fixture's
@@ -540,4 +547,43 @@ in `apps/web`. What a customer of the API now gets that it did not before:
 **Still out of scope**, unchanged from §15: switching `apps/web` to the
 Menu, Cart or Order API, payments, order status changes, order history,
 more than one customer, and everything on the AI/voice/infra list.
+
+## 17. Phase 11 additions
+
+Phase 11 connects `apps/web` to commerce-api — the switch every phase
+since 7 recorded as "still out of scope". See
+`docs/features/phase-11-web-commerce-integration/` for the full plan and
+ADR-0018 for the decisions. The journeys in §5 are unchanged; what changed
+is where every commerce fact comes from.
+
+**What a customer now sees differently:**
+
+- **The menu is the restaurant's live menu.** Prices and availability come
+  from commerce-api on every visit to the menu page.
+- **The cart is the backend cart.** It survives a page reload and a server
+  restart. Nothing on screen changes until commerce-api has confirmed it;
+  while a change is in flight the cart controls are disabled, and "Add to
+  cart" reads "Adding…". The cart shows a loading state before its first
+  answer rather than a guessed "0".
+- **Unavailable items are enforced in the UI as well as the backend.** An
+  unavailable item in the cart is labelled, can only be removed, and blocks
+  checkout until it is (§13/§14 recorded availability as unenforced in the
+  UI; §15 as enforced only by the backend at placement).
+- **Placing an order creates a real, persisted order.** The confirmation
+  shows commerce-api's order id (a UUID, not `ORD-XXXXXX`), and the cart
+  is empty afterwards because the backend emptied it. A double-click or a
+  retry after a network blip cannot create a second order (idempotency
+  key). The disclosure now reads: "Your order has been recorded. No
+  payment was taken — this demo does not send orders to a restaurant."
+- **Errors are explained in plain language** — unreachable restaurant,
+  item unavailable, cart changed elsewhere, empty cart, a rejected detail
+  (returned to that field) — never in the backend's own wording.
+
+**Explicitly declined, unchanged:** a general "clear cart" (no
+`DELETE /v1/cart`, ADR-0011/Phase 8), order history, and optimistic cart
+updates.
+
+**Still out of scope**, unchanged from §16: payments, authentication (still
+one shared cart), order status changes, delivery, and everything on the
+AI/voice/infra list.
 

@@ -1,6 +1,6 @@
 "use client";
 
-import type { MenuCategory } from "../../lib/fixtures/menu";
+import type { MenuCategory } from "@contracts/api-contracts";
 import { findMenuItemIn } from "../../lib/menu/menuSource";
 import { formatCents } from "../../lib/money";
 import { useUi } from "../../lib/state/uiStore";

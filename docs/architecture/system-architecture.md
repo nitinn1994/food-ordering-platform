@@ -45,6 +45,14 @@ The dotted line is the boundary that matters most. It is not enforced by
 anything mechanical today — no network policy, no credential separation — so
 until it is, it is enforced by review.
 
+**Web → API, as built (Phase 11, ADR-0018).** The "direct reads +
+touch-driven mutations" edge exists. The browser never calls commerce-api's
+origin: it calls `apps/web`'s own `/api/commerce/v1/*`, which Next.js
+rewrites to `COMMERCE_API_URL` (server-only). Server Components (the menu)
+call `COMMERCE_API_URL` directly. So commerce-api needs no CORS, and all of
+`apps/web`'s HTTP goes through one client (`apps/web/src/lib/api/`) that
+validates every response against `@contracts/api-contracts`.
+
 ## 3. Request walkthrough
 
 A conversational turn, end to end:
@@ -145,6 +153,11 @@ state, the agent has a write path that skips `commerce-api` validation.
 When frontend and backend disagree, the backend wins and the frontend
 refreshes. This is stated three times in `CLAUDE.md`; it is treated here as
 load-bearing rather than advisory.
+
+Since Phase 11 `apps/web` holds to this table in practice, not just on
+paper: it shows only commerce-api responses for menu, cart, prices and
+orders, computes no price or total, mints no order id, and changes nothing
+on screen before the backend has answered (ADR-0018).
 
 ## 6. Contracts
 

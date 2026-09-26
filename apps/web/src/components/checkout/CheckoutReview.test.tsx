@@ -2,12 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CheckoutReview } from "./CheckoutReview";
-import type {
-  CustomerDetails,
-  SimulatedOrderLine,
-} from "../../lib/checkout/types";
+import type { OrderLine } from "@contracts/api-contracts";
+import type { CustomerDetails } from "../../lib/checkout/types";
+import { ApiError } from "../../lib/api/errors";
 
-const LINES: SimulatedOrderLine[] = [
+const LINES: OrderLine[] = [
   {
     itemId: "tiramisu",
     name: "Tiramisu",
@@ -78,7 +77,8 @@ describe("CheckoutReview", () => {
 
   it("disables both actions while submitting (AC13)", () => {
     renderReview({ submitting: true });
-    expect(screen.getByRole("button", { name: "Place order" })).toBeDisabled();
+    // Labelled "Placing order…" while submitting since Phase 11.
+    expect(screen.getByRole("button", { name: "Placing order…" })).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Edit details" }),
     ).toBeDisabled();
@@ -96,5 +96,27 @@ describe("CheckoutReview", () => {
     expect(
       screen.getByRole("heading", { name: "Review your order" }),
     ).toHaveFocus();
+  });
+
+  it("reads Placing order… and is busy while submitting (Phase 11)", () => {
+    const { container } = renderReview({ submitting: true });
+    expect(screen.getByRole("button", { name: "Placing order…" })).toBeDisabled();
+    expect(container.querySelector("[aria-busy='true']")).not.toBeNull();
+  });
+
+  it("shows a failed placement in friendly copy, never the backend's words (Phase 11 AC13)", () => {
+    renderReview({
+      submitError: new ApiError({ kind: "http", status: 422, code: "MENU_ITEM_UNAVAILABLE" }),
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "An item in your cart is no longer available. Please review your cart.",
+    );
+    expect(screen.getByRole("button", { name: "Place order" })).toBeEnabled();
+  });
+
+  it("disables Place order while any item is unavailable (Phase 11 AC8)", () => {
+    renderReview({ hasUnavailableItems: true });
+    expect(screen.getByRole("button", { name: "Place order" })).toBeDisabled();
+    expect(screen.getByText(/some items in your cart are unavailable/i)).toBeInTheDocument();
   });
 });

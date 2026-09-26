@@ -21,7 +21,7 @@ function Harness() {
         details={state.details}
         errors={state.errors}
         onChange={(field, value) => dispatch({ type: "SET_FIELD", field, value })}
-        onSubmit={() => dispatch({ type: "SUBMIT_DETAILS" })}
+        onSubmit={() => dispatch({ type: "SUBMIT_DETAILS", idempotencyKey: "key-1" })}
         onValidationFailure={() => setAnnounceCount((count) => count + 1)}
       />
     </>

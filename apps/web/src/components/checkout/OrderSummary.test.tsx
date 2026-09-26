@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { OrderSummary } from "./OrderSummary";
-import type { SimulatedOrderLine } from "../../lib/checkout/types";
+import type { OrderLine } from "@contracts/api-contracts";
 
-const LINES: SimulatedOrderLine[] = [
+const LINES: OrderLine[] = [
   {
     itemId: "garlic-bread",
     name: "Garlic Bread",

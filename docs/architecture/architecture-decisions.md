@@ -23,19 +23,20 @@ made, and what they cost.
 | [0002](#adr-0002--pnpm-workspaces--turborepo-for-the-typescript-graph) | pnpm workspaces + Turborepo for the TypeScript graph | Accepted |
 | [0003](#adr-0003--zod-as-contract-source-of-truth-pydantic-generated-for-python) | Zod as contract source of truth, Pydantic generated for Python | Accepted |
 | [0004](#adr-0004--simulate-the-database-behind-a-repository-interface) | Simulate the database behind a repository interface | Superseded by ADR-0017 (runtime storage); in-memory adapters kept as test adapters |
-| [0005](#adr-0005--refetch-after-mutation-for-frontend-freshness) | Refetch-after-mutation for frontend freshness | Proposed |
+| [0005](#adr-0005--refetch-after-mutation-for-frontend-freshness) | Refetch-after-mutation for frontend freshness | Accepted (Phase 11) |
 | [0006](#adr-0006--jest-for-typescript-pytest-for-python) | Jest for TypeScript, pytest for Python | Proposed |
 | [0007](#adr-0007--defer-voice-entirely-rather-than-stub-a-provider) | Defer voice entirely rather than stub a provider | Proposed |
 | [0008](#adr-0008--vitest-for-typescript-testing-library--jsdom-for-components) | Vitest for TypeScript, Testing Library + jsdom for components | Accepted |
 | [0009](#adr-0009--single-restaurant-scope-no-restaurant-entity) | Single-restaurant scope — no `Restaurant` entity | Accepted |
 | [0010](#adr-0010--a-real-cart-route-with-providers-hoisted-to-the-root-layout) | A real `/cart` route, with providers hoisted to the root layout | Accepted |
-| [0011](#adr-0011--a-simulated-frontend-checkout-that-knowingly-violates-the-order-state-authority-model) | A simulated frontend checkout that knowingly violates the order-state authority model | Accepted |
+| [0011](#adr-0011--a-simulated-frontend-checkout-that-knowingly-violates-the-order-state-authority-model) | A simulated frontend checkout that knowingly violates the order-state authority model | Accepted — violation closed in Phase 11 (ADR-0018) |
 | [0012](#adr-0012--contract-foundation-envelope-metadata-versioning-and-a-fourth-contracts-family) | Contract foundation: envelope, metadata, versioning, and a fourth contracts family | Accepted |
 | [0013](#adr-0013--nestjs-commerce-api-foundation-toolchain-validation-error-model-and-boundary) | NestJS commerce-api foundation: toolchain, validation, error model, and boundary | Accepted |
 | [0014](#adr-0014--menu-domain-in-memory-repository-a-new-api-contracts-package-and-a-shared-domain-error-base) | Menu domain: in-memory repository, a new `api-contracts` package, and a shared domain-error base | Accepted |
 | [0015](#adr-0015--cart-domain-server-resolved-identity-live-menu-pricing-in-memory-storage-with-optimistic-versioning) | Cart domain: server-resolved identity, live menu pricing, in-memory storage with optimistic versioning | Accepted |
 | [0016](#adr-0016--order-domain-snapshot-at-placement-cart-consumed-at-the-priced-version-idempotent-creation-in-memory-storage) | Order domain: snapshot at placement, cart consumed at the priced version, idempotent creation, in-memory storage | Accepted |
 | [0017](#adr-0017--postgresql-behind-the-repository-ports-kysely-migrations-and-one-transaction-for-order-placement) | PostgreSQL behind the repository ports: Kysely, migrations, and one transaction for order placement | Accepted |
+| [0018](#adr-0018--apps-web-on-commerce-api-a-same-origin-proxy-one-api-client-and-server-state-without-a-new-library) | `apps/web` on commerce-api: a same-origin proxy, one API client, and server state without a new library | Accepted |
 
 ---
 
@@ -194,7 +195,8 @@ on the store.
 
 ## ADR-0005 — Refetch-after-mutation for frontend freshness
 
-**Status:** Proposed · **Date:** 2026-09-14
+**Status:** Accepted (Phase 11, 2026-09-26, as part of the approved Phase 11
+plan — see ADR-0018) · **Date:** 2026-09-14
 
 ### Context
 
@@ -215,6 +217,11 @@ Refetch after mutation. No polling, no push channel.
   order status advancing server-side). If multi-device or live order tracking
   becomes a requirement, this needs revisiting — it is a genuine limitation,
   not a deferral.
+- **Update (Phase 11):** in use. Every commerce-api cart route returns the
+  whole cart, so the mutation *response* is the refetch: `apps/web`
+  replaces its displayed cart with that body and adds a separate
+  `GET /v1/cart` only after a failure, or after an order has emptied the
+  cart server-side (ADR-0018).
 
 ---
 
@@ -530,6 +537,15 @@ than decided silently.
   is still the order the product actually shows. It is deleted when the
   integration phase switches `/checkout` to the API — unchanged from the
   consequence above.
+- **Update (Phase 11): closed.** `/checkout` now places orders with
+  `POST /v1/orders` (ADR-0018). `lib/checkout/order.ts` and
+  `lib/checkout/orderId.ts` are deleted, the order shown is commerce-api's
+  `OrderResponse`, and no order id is minted in the browser. The
+  confirmation disclosure this ADR called load-bearing survives, reworded
+  because "simulated" became false: "Your order has been recorded. No
+  payment was taken — this demo does not send orders to a restaurant."
+  `CLEAR_CART` is gone too: the backend empties the cart as part of placing
+  the order, and the frontend re-reads it.
 
 ---
 
@@ -1162,4 +1178,98 @@ could own the transaction.
   (`system-architecture.md` §8 gap 2): only `commerce-api` has the driver and
   the connection string, and the Compose port is bound to localhost, but no
   credential separation or network policy stops another component.
+
+---
+
+## ADR-0018 — `apps/web` on commerce-api: a same-origin proxy, one API client, and server state without a new library
+
+**Status:** Accepted · **Date:** 2026-09-26 (Phase 11) · **Decisions:**
+`docs/features/phase-11-web-commerce-integration/plan.md` §24, OD1–OD14,
+approved as recommended (AC2 later reworded with the human's agreement)
+
+### Context
+
+commerce-api has owned the menu (Phase 7), the cart (Phase 8) and order
+creation (Phase 9), persistently since Phase 10, but nothing called it.
+`apps/web` still read a fixture menu, kept its own cart in a reducer, priced
+it client-side, and minted simulated orders — the four temporary items in
+`food-ordering-frontend-mvp.md` §7, two of which (client pricing, client
+order identity) contradicted the authority model in
+`system-architecture.md` §5. commerce-api has no CORS, and its cart add
+(`POST /v1/cart/items`) is not idempotent (§8 gap 3).
+
+### Decision
+
+1. **Same-origin proxy, no CORS** (OD1). `next.config.ts` rewrites
+   `/api/commerce/v1/:path*` to `${COMMERCE_API_URL}/v1/:path*`. The browser
+   only ever calls its own origin; commerce-api is unchanged; only `/v1` is
+   forwarded — enforced by `src/middleware.ts`, which answers 404 for any
+   `/api/commerce/*` path that is not plainly inside `/v1`, because the
+   rewrite pattern alone matched `..` segments (security finding S1).
+   `apps/web` listens on `127.0.0.1` only (`next dev|start -H 127.0.0.1`),
+   because through the proxy it exposes commerce-api, which is itself
+   loopback-only (security finding S2). `COMMERCE_API_URL` is server-only
+   (never `NEXT_PUBLIC_`). Server Components call it directly.
+2. **One API client** (`src/lib/api/`): the only place `apps/web` calls
+   `fetch`. It validates every success body against the
+   `@contracts/api-contracts` schema (OD8), normalises every failure into
+   one `ApiError` (`network` | `timeout` | `http` | `invalid-response`,
+   with `code`/`field` from the backend's `ContractError`), never keeps the
+   backend's `message`, applies timeouts, and never uses an HTTP cache.
+   Components reach it only through service functions (menu, cart, order)
+   or `useCart()`. User-facing copy is chosen from `code`/`kind` in one
+   module (`userMessages.ts`).
+3. **Retries only where repeating is safe** (OD9): GETs and
+   `POST /v1/orders` (same idempotency key) retry twice on a network
+   failure, timeout or 503. Cart mutations never retry; after any failure
+   the cart is re-read instead.
+4. **No new state library** (OD2). The menu is fetched by an async Server
+   Component per request (`cache: "no-store"` plus `force-dynamic` on `/`,
+   OD4 — `no-store` alone did not stop prerendering). The cart provider
+   holds only the last `CartResponse`, replaced wholesale by each response,
+   plus request status; nothing edits or prices it locally, and nothing
+   changes before the backend answers (no optimistic updates, OD7). One
+   cart mutation at a time; controls are disabled while it is in flight
+   (OD6). The stepper sends an absolute `PATCH` quantity; only "Add to
+   cart" sends the non-idempotent `POST` (OD5).
+5. **Checkout places real orders.** One idempotency key per review of one
+   set of details, reused for every retry, replaced when the details are
+   edited or after `IDEMPOTENCY_KEY_REUSED` (OD12). A server rejection of a
+   customer field returns the user to that field. Unavailable lines block
+   checkout up front (OD11).
+6. **No clear-cart route** (OD3): Phase 8's decision stands; the frontend
+   re-reads the cart after an order.
+7. **The fixture menu is deleted** from `src/lib` (OD13); its data lives
+   on only as test data (`src/test/fixtures/menu.ts`). commerce-api's seed
+   is the only non-test copy of the menu.
+
+### Consequences
+
+- The four §7 temporary items are resolved, and ADR-0011's violation is
+  closed. Every price, total, order id and status `apps/web` shows came
+  from commerce-api.
+- `/cart` and `/checkout` fetch nothing on the server and prerender as
+  static shells; the cart loads in the browser, so the first paint shows a
+  loading state rather than a count. `/` renders per request, so the build
+  never needs a running API.
+- A production build must set `COMMERCE_API_URL` **at build time**:
+  rewrites are fixed when `next build` runs. `next.config.ts` falls back to
+  the dev address so the repository's build works unconfigured; the server
+  side (`config.ts`) refuses to guess in production.
+- Response schemas are strict, so an additive commerce-api field fails
+  `apps/web` loudly (`invalid-response`) until the contracts package that
+  both share is updated — acceptable in one repository, deliberately
+  loud rather than silent.
+- zod now ships to the browser with the client-side contract schemas (one
+  route chunk, ~31 kB gzipped including the schemas).
+- **Found in the live walk:** with commerce-api stopped, the Next.js proxy
+  answers a browser request with a plain-text `500`, not a network failure.
+  The client therefore shows the server-error copy (friendly, nothing
+  leaked) but does not auto-retry, since it retries only network errors,
+  timeouts and 503. Recorded as follow-up; the policy was not changed in
+  this phase.
+- There is still one shared cart (single user, ADR-0015) and no
+  authentication; a retried cart add would still double-count if anything
+  retried it — which `apps/web` never does. Browser e2e remains unconfigured
+  (OD14).
 

@@ -1,12 +1,12 @@
 import { formatCents } from "../../lib/money";
 import { CartTotal } from "../cart/CartTotal";
-import type { SimulatedOrderLine } from "../../lib/checkout/types";
+import type { OrderSummaryLine } from "../../lib/checkout/types";
 import styles from "./OrderSummary.module.css";
 
 // Read-only order summary — plain props only, never reads useCart or the
 // checkout reducer directly, so it renders identically whether given the
-// live cart's resolved lines (CheckoutReview) or a frozen order snapshot
-// (OrderConfirmation). Reuses CartTotal for the total line, the exact
+// backend cart's live lines (CheckoutReview) or commerce-api's placed
+// order (OrderConfirmation) — both are already priced by commerce-api. Reuses CartTotal for the total line, the exact
 // component /cart already renders its own total through, rather than
 // re-implementing the same "Total: $X.XX" markup here. See
 // docs/features/phase-4-frontend-checkout-simulation/plan.md §11, §13.
@@ -14,7 +14,7 @@ export function OrderSummary({
   lines,
   totalCents,
 }: {
-  lines: readonly SimulatedOrderLine[];
+  lines: readonly OrderSummaryLine[];
   totalCents: number;
 }) {
   return (

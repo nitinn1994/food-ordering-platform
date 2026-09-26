@@ -1,9 +1,10 @@
-// Frontend-only checkout types. Everything here is throwaway simulation
-// state, not a contract — see lib/checkout/order.ts's header comment and
-// docs/features/phase-4-frontend-checkout-simulation/plan.md. None of this
-// is added to packages/contracts/: placing an order is a business intent
-// (system-architecture.md §4.4), and commerce-api will define the real
-// shape when it exists.
+import type { OrderResponse } from "@contracts/api-contracts";
+
+// Checkout state for apps/web's /checkout flow. The order itself is not
+// defined here: it is commerce-api's OrderResponse
+// (@contracts/api-contracts), created by POST /v1/orders — see
+// docs/features/phase-11-web-commerce-integration/plan.md §5. What is here
+// is form and step state, which stays frontend-owned (plan.md §8).
 
 export type CheckoutStep = "details" | "review" | "submitting" | "confirmed";
 
@@ -17,23 +18,13 @@ export type CustomerDetailsErrors = Partial<
   Record<keyof CustomerDetails, string>
 >;
 
-export type SimulatedOrderLine = {
+// The fields OrderSummary renders — satisfied by both a cart line (review,
+// live prices) and an order line (confirmation, prices as placed).
+export type OrderSummaryLine = {
   itemId: string;
   name: string;
-  unitPriceCents: number;
   quantity: number;
   lineSubtotalCents: number;
-};
-
-// totalCents is always subtotalCents in this phase (D5, no tax/fee/tip/
-// discount) — see lib/checkout/order.ts for where that equality is set.
-export type SimulatedOrder = {
-  orderId: string;
-  placedAt: number;
-  customer: CustomerDetails;
-  lines: SimulatedOrderLine[];
-  subtotalCents: number;
-  totalCents: number;
 };
 
 export type CheckoutState = {
@@ -41,7 +32,14 @@ export type CheckoutState = {
   details: CustomerDetails;
   errors: CustomerDetailsErrors;
   submitAttempted: boolean;
-  order: SimulatedOrder | null;
+  // One key per review of one set of details, reused for every retry of
+  // that submission so a retry replays rather than duplicates the order;
+  // cleared when the details are edited (plan.md OD12).
+  idempotencyKey: string | null;
+  // The last failed placement, shown on the review step (plan.md §11).
+  submitError: unknown;
+  // commerce-api's response, kept only to display the confirmation.
+  order: OrderResponse | null;
 };
 
 export const initialCustomerDetails: CustomerDetails = {
@@ -55,5 +53,7 @@ export const initialCheckoutState: CheckoutState = {
   details: initialCustomerDetails,
   errors: {},
   submitAttempted: false,
+  idempotencyKey: null,
+  submitError: null,
   order: null,
 };

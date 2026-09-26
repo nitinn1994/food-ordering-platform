@@ -1,29 +1,11 @@
-// TEMPORARY — replaced by commerce-api menu reads. See
-// docs/product/food-ordering-frontend-mvp.md §7, item 1. This shape is a
-// starting point for the real menu API, not a commitment to it.
-//
-// dietaryTags/allergens/calories/longDescription are display-only
-// enrichment for the item detail panel (Phase 2) — they carry no pricing
-// weight, so they don't compound the temporary pricing violation flagged
-// above them in cartStore.tsx.
+import type { MenuCategory, MenuItem } from "@contracts/api-contracts";
 
-export type MenuItem = {
-  id: string;
-  name: string;
-  description: string;
-  longDescription: string;
-  priceCents: number;
-  available: boolean;
-  dietaryTags: string[];
-  allergens: string[];
-  calories: number;
-};
-
-export type MenuCategory = {
-  id: string;
-  name: string;
-  items: MenuItem[];
-};
+// TEST-ONLY menu data. The production menu comes from commerce-api
+// (GET /v1/menu) — docs/features/phase-11-web-commerce-integration/plan.md
+// §3, OD13. This is the Phase 2 fixture that used to live in
+// src/lib/fixtures/menu.ts, moved here unchanged except for `categoryId`,
+// which the API contract adds to every item. Nothing under src/lib, src/app
+// or src/components may import it.
 
 export const MENU: readonly MenuCategory[] = [
   {
@@ -32,6 +14,7 @@ export const MENU: readonly MenuCategory[] = [
     items: [
       {
         id: "garlic-bread",
+        categoryId: "starters",
         name: "Garlic Bread",
         description: "Toasted sourdough, roasted garlic butter.",
         longDescription:
@@ -45,6 +28,7 @@ export const MENU: readonly MenuCategory[] = [
       },
       {
         id: "soup-of-the-day",
+        categoryId: "starters",
         name: "Soup of the Day",
         description: "Ask about today's selection.",
         longDescription:
@@ -64,6 +48,7 @@ export const MENU: readonly MenuCategory[] = [
     items: [
       {
         id: "margherita-pizza",
+        categoryId: "mains",
         name: "Margherita Pizza",
         description: "San Marzano tomato, fresh mozzarella, basil.",
         longDescription:
@@ -77,6 +62,7 @@ export const MENU: readonly MenuCategory[] = [
       },
       {
         id: "veggie-burger",
+        categoryId: "mains",
         name: "Veggie Burger",
         description: "House patty, aged cheddar, pickles.",
         longDescription:
@@ -96,6 +82,7 @@ export const MENU: readonly MenuCategory[] = [
     items: [
       {
         id: "tiramisu",
+        categoryId: "desserts",
         name: "Tiramisu",
         description: "Espresso-soaked ladyfingers, mascarpone.",
         longDescription:
@@ -109,6 +96,7 @@ export const MENU: readonly MenuCategory[] = [
       },
       {
         id: "gelato",
+        categoryId: "desserts",
         name: "Gelato",
         description: "Ask about today's flavours.",
         longDescription:

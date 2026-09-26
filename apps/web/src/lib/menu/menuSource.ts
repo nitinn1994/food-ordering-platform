@@ -1,24 +1,34 @@
-import { MENU, type MenuCategory, type MenuItem } from "../fixtures/menu";
+import {
+  menuResponseSchema,
+  type MenuCategory,
+  type MenuItem,
+} from "@contracts/api-contracts";
+import { request, type RequestDeps } from "../api/client";
 
-// TEMPORARY — the sole point in apps/web that reads menu data. Replaced by
-// an HTTP call to commerce-api (docs/product/food-ordering-frontend-mvp.md
-// §7). Every other module receives menu data as a parameter from whatever
-// called getMenu(), rather than importing the fixture directly — see
+// The sole point in apps/web that reads menu data — now from commerce-api's
+// GET /v1/menu (docs/features/phase-11-web-commerce-integration/plan.md §3).
+// Every other module still receives menu data as a parameter from whatever
+// called getMenu(), rather than fetching it itself — see
 // docs/features/phase-2-menu-browsing/requirements.md AC6.
 //
-// Type-only imports of MenuItem/MenuCategory elsewhere are fine and don't
-// violate AC6 — they carry no runtime dependency on this fixture and are
-// erased at compile time.
-//
-// No artificial delay by default: the point of this seam is its shape, not
-// simulated latency. Real latency arrives with the real API.
-export async function getMenu(): Promise<readonly MenuCategory[]> {
-  return MENU;
+// Awaited by async Server Components, so on the server this calls
+// COMMERCE_API_URL directly. The client's `cache: "no-store"` makes every
+// route that awaits this render per request, so `next build` never needs a
+// running API and a menu change shows on the next load (plan.md §9, OD4).
+// A failure rejects, and the route's error boundary (app/error.tsx) takes
+// over.
+export async function getMenu(
+  deps?: RequestDeps,
+): Promise<readonly MenuCategory[]> {
+  const menu = await request(
+    { method: "GET", path: "/v1/menu", schema: menuResponseSchema, retry: true },
+    deps,
+  );
+  return menu.categories;
 }
 
-// Looks up an item within already-resolved menu data — never touches the
-// fixture itself. Callers (cartStore, CartLine) receive categories as a
-// prop/parameter rather than importing the fixture.
+// Looks up an item within already-resolved menu data — never fetches.
+// Callers receive categories as a prop/parameter.
 export function findMenuItemIn(
   categories: readonly MenuCategory[],
   itemId: string,

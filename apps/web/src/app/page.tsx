@@ -8,6 +8,13 @@ import { CommandLogPanel } from "../components/dev/CommandLogPanel";
 import { getMenu } from "../lib/menu/menuSource";
 import styles from "./page.module.css";
 
+// Rendered per request, never prerendered: getMenu() reads commerce-api,
+// which need not be running during `next build`, and whose menu must not be
+// frozen into the build. `cache: "no-store"` alone did not opt this route
+// out of prerendering (docs/features/phase-11-web-commerce-integration/
+// plan.md, Assumption B — the plan's recorded fallback).
+export const dynamic = "force-dynamic";
+
 // Async Server Component: getMenu() is awaited here, once, and the result is
 // passed down as a prop everywhere it's needed. loading.tsx and error.tsx
 // (siblings in this directory) are Next.js's own Suspense/error-boundary
@@ -32,7 +39,7 @@ export default async function Home() {
           <ChatInput />
         </section>
         <div className={styles.column}>
-          <CartPanel categories={categories} />
+          <CartPanel />
           <CommandLogPanel />
         </div>
       </div>

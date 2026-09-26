@@ -3,14 +3,16 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 127.0.0.1",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -H 127.0.0.1",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
+    "@contracts/api-contracts": "workspace:*",
+    "@contracts/common": "workspace:*",
     "@contracts/ui-commands": "workspace:*",
     "next": "^15.0.0",
     "react": "^19.0.0",

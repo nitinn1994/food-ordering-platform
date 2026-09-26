@@ -1,8 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { screen } from "@testing-library/react";
 import { CartAnnouncer } from "./CartAnnouncer";
-import { CartProvider, useCart } from "../../lib/state/cartStore";
+import { useCart } from "../../lib/state/cartStore";
+import { EMPTY_CART, pricedCart, renderWithCart } from "../../test/cart";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function AddTiramisuButton() {
   const { addItem } = useCart();
@@ -14,44 +18,55 @@ function AddTiramisuButton() {
 }
 
 describe("CartAnnouncer", () => {
-  it("renders an empty, polite live region on mount", () => {
-    render(
-      <CartProvider>
-        <CartAnnouncer />
-      </CartProvider>,
-    );
+  it("renders an empty, polite live region on mount", async () => {
+    await renderWithCart(<CartAnnouncer />);
 
     const region = screen.getByRole("status");
     expect(region).toHaveAttribute("aria-live", "polite");
     expect(region).toHaveTextContent("");
   });
 
-  it("announces the new item count after a cart change", async () => {
-    const user = userEvent.setup();
-    render(
-      <CartProvider>
+  it("does not announce the cart arriving on first load (Phase 11)", async () => {
+    await renderWithCart(<CartAnnouncer />, {
+      cart: pricedCart([{ itemId: "tiramisu", quantity: 3 }]),
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent("");
+  });
+
+  it("announces the new item count after a confirmed cart change", async () => {
+    const { user } = await renderWithCart(
+      <>
         <AddTiramisuButton />
         <CartAnnouncer />
-      </CartProvider>,
+      </>,
+      { cart: EMPTY_CART, replies: [{ body: pricedCart([{ itemId: "tiramisu", quantity: 1 }]) }] },
     );
 
     await user.click(screen.getByRole("button", { name: "add tiramisu" }));
 
-    expect(screen.getByRole("status")).toHaveTextContent("1 item in cart.");
+    expect(await screen.findByText("1 item in cart.")).toBeInTheDocument();
   });
 
   it("uses plural phrasing for more than one item", async () => {
-    const user = userEvent.setup();
-    render(
-      <CartProvider>
+    const { user } = await renderWithCart(
+      <>
         <AddTiramisuButton />
         <CartAnnouncer />
-      </CartProvider>,
+      </>,
+      {
+        cart: EMPTY_CART,
+        replies: [
+          { body: pricedCart([{ itemId: "tiramisu", quantity: 1 }]) },
+          { body: pricedCart([{ itemId: "tiramisu", quantity: 2 }]) },
+        ],
+      },
     );
 
     await user.click(screen.getByRole("button", { name: "add tiramisu" }));
+    await screen.findByText("1 item in cart.");
     await user.click(screen.getByRole("button", { name: "add tiramisu" }));
 
-    expect(screen.getByRole("status")).toHaveTextContent("2 items in cart.");
+    expect(await screen.findByText("2 items in cart.")).toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import type { MenuCategory } from "../fixtures/menu";
+import type { MenuCategory } from "@contracts/api-contracts";
 
 export type MenuFilter = {
   categoryId: string | null;
