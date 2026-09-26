@@ -38,6 +38,7 @@ made, and what they cost.
 | [0017](#adr-0017--postgresql-behind-the-repository-ports-kysely-migrations-and-one-transaction-for-order-placement) | PostgreSQL behind the repository ports: Kysely, migrations, and one transaction for order placement | Accepted |
 | [0018](#adr-0018--apps-web-on-commerce-api-a-same-origin-proxy-one-api-client-and-server-state-without-a-new-library) | `apps/web` on commerce-api: a same-origin proxy, one API client, and server state without a new library | Accepted |
 | [0019](#adr-0019--ai-service-foundation-uv-fastapi-the-commerce-api-error-and-correlation-model-and-tested-boundaries) | ai-service foundation: uv, FastAPI, the commerce-api error and correlation model, and tested boundaries | Accepted |
+| [0020](#adr-0020--langgraph-agent-foundation-a-linear-graph-on-a-simulated-model-an-agent-service-and-refused-tracing) | LangGraph agent foundation: a linear graph on a simulated model, an agent service, and refused tracing | Accepted |
 
 ---
 
@@ -1423,3 +1424,154 @@ across both services. The machine had Python 3.12.3 with no `pip`, no
 - **§4.1 of `system-architecture.md` is now partly mechanical.** A test
   refuses a database driver in the AI service. There is still no network or
   credential separation (§8, gap 2).
+
+---
+
+## ADR-0020 — LangGraph agent foundation: a linear graph on a simulated model, an agent service, and refused tracing
+
+**Status:** Accepted · **Date:** 2026-09-26 (Phase 13) · **Decisions:**
+`docs/features/phase-13-langgraph-agent-foundation/plan.md` §24, OD1–OD14,
+approved as recommended
+
+### Context
+
+ADR-0019 built `apps/ai-service` with no AI behaviour and reserved
+`agents/` and `llm/` for later. `system-architecture.md` §3 says the service
+reasons with LangGraph. Before any tool, intent or provider exists, the
+orchestration layer needs fixed answers to several questions:
+
+- how a graph is built, injected and tested
+- what agent state may hold
+- where the model boundary sits
+- how a customer utterance enters the service, and how a failure leaves it
+  without leaking the utterance
+
+CLAUDE.md keeps the project simulation-first: no real model integration yet.
+
+Two facts surfaced during planning and implementation:
+
+- `langgraph` requires `langchain-core`, and `langchain-core` requires
+  `langsmith`. So a tracing client that can send data off the machine is
+  unavoidable.
+- `langsmith` also brings `httpx2`, which Starlette's `TestClient` then
+  prefers over `httpx`.
+
+### Decision
+
+1. **Dependencies: `langgraph` and `langchain-core`, both direct** (OD12).
+   They use the repository's `>=` lower bounds, with exact versions in
+   `uv.lock`: `langgraph` 1.2.12 and `langchain-core` 1.6.5 at the time.
+   `langchain-core` is declared because the service imports it directly.
+   Nothing else from the LangChain family is added, and no provider package.
+2. **Location-scoped imports, enforced by `tests/test_boundaries.py`:**
+   - `langgraph` is allowed only under `ai_service/agents/`.
+   - `langchain_core` is allowed only under `ai_service/agents/` and
+     `ai_service/llm/`.
+   - Forbidden everywhere: `langchain`, every other `langchain_*` package,
+     `langsmith`, `langgraph.prebuilt`, `langgraph.checkpoint`,
+     `langgraph_*`, `langchain_core.tools`, `langchain_core.load`
+     (LangChain's deserializer; security review S2), and the existing
+     provider, database and HTTP-client entries.
+   - `from X import Y` is scanned as `X.Y`.
+   - No module may build a model, graph or service at import time.
+
+   Every new rule was shown to fail.
+3. **The model boundary is LangChain's `BaseChatModel`** (OD2), as ADR-0019
+   §4 expected. There is no hand-written provider protocol.
+   `llm/build_chat_model()` is the one place a model is chosen. **Phase 13's
+   model is `SimulatedChatModel`** (OD3): deterministic, one fixed honest
+   reply, never echoes input, no network. There is no provider configuration;
+   that arrives with the first provider.
+4. **State is conversation state only.** `AgentState` is
+   `{messages (add_messages), reply?}`. Cart, prices, order status and
+   availability never appear in it. A test pins the keys.
+5. **The graph is linear:** `START → call_model → finalize_reply → END`
+   (OD6). It has no conditional edges, no checkpointer and no prompt.
+   - `call_model` receives the model by closure.
+   - `finalize_reply` rejects anything that is not a non-empty plain-text
+     `AIMessage` without tool calls. It is where structured output will be
+     validated later.
+   - Every invocation passes `recursion_limit=5`.
+6. **`AgentService` is the only way into the graph.** It maps the message
+   into state, invokes the graph, and maps the final state into a frozen
+   `AgentResult` (reply of at most 4000 characters). It catches `Exception`
+   (so cancellation propagates) and raises `AgentTurnFailedError`
+   (`AGENT_FAILED`, 500, static message) `from None`. **Only the
+   exception's class name is logged; there is no traceback** (OD8). Result
+   validation is inside the `try`, so a `ValidationError` carrying model
+   output never reaches the last-resort handler (ADR-0019 S2).
+7. **One route: `POST /v1/agent/turns`** (OD1).
+   - Request: `{message}`, 1–2000 characters, not whitespace-only, unknown
+     keys rejected (OD9).
+   - Response: `{reply}` (OD5).
+   - Stateless: no conversation id (OD4).
+   - No `intent` field: intents will be generated from
+     `packages/contracts`, never hand-written, so ADR-0019's ADR-0003
+     exception does not widen.
+   - `apps/web` does not call the route yet.
+8. **Request body limits, app-wide** (OD10), matching commerce-api:
+   - 16 KB (413 `PAYLOAD_TOO_LARGE`).
+   - A JSON content type for any request with a body (415
+     `UNSUPPORTED_MEDIA_TYPE`).
+   - Implemented as a pure ASGI middleware inside the request-context
+     middleware. It buffers the body up to the limit instead of aborting
+     mid-read, because FastAPI turns any error raised while it reads a body
+     into a 400.
+9. **Dependency injection through `create_app(..., agent_service=None)`.**
+   It builds the simulated service by default, one per app, stored on
+   `app.state`. Tests inject a service on a fake model.
+10. **Tracing is refused, fail-closed** (OD7). `load_settings` exits the
+    process if `LANGSMITH_TRACING`, `LANGSMITH_TRACING_V2`,
+    `LANGCHAIN_TRACING`, `LANGCHAIN_TRACING_V2` or `LANGCHAIN_HANDLER` holds
+    anything but `""`, `"0"`, `"false"` or `"False"`. These are the
+    variables and "off" values read from the installed `langsmith` and
+    `langchain-core`. `create_app` runs the same check
+    (`ensure_tracing_disabled`), so every composition root refuses tracing,
+    not only the entry points (security review S1). The test suite clears
+    the variables before any test runs.
+11. **Logging** (OD11):
+    - One `ai_service.agent` line per turn with lengths, duration and
+      outcome, never content.
+    - `httpx`, `httpcore`, `httpx2` and `httpcore2` are set to `WARNING`.
+      They are installed at runtime through `langchain-core`/`langsmith`,
+      and ADR-0019's rule applies once they are present.
+
+### Rules this sets for later AI phases
+
+- A new state key is a reviewed change to the state test. Commerce data may
+  enter the graph only as context in a message (for example a tool
+  result), never as a state key, and it is never read back as truth.
+- Lifting an import ban (`langchain_core.tools` for tools,
+  `langgraph.checkpoint` for memory, a provider package under `llm/`)
+  happens in the same change as the feature that needs it.
+- Agent failures stay `AgentTurnFailedError`, or a more specific subclass
+  with its own code (a model timeout, a provider outage), and never log
+  exception text.
+- The first routing arrives with tools, as a conditional edge. The
+  recursion limit stays explicit.
+- Intents and UI commands reach `AgentResult` and the response through
+  generated models, validated in `finalize_reply`.
+- LangSmith, or any tracing, requires explicit approval and a change to the
+  tracing guard.
+
+### Consequences
+
+- **24 transitive packages** arrive with the two direct dependencies,
+  including `requests`, `websockets` and `langsmith`. They are installed
+  but import-forbidden in service code. That is a larger supply-chain
+  surface than the two names suggest.
+- **Starlette's `TestClient` now uses `httpx2`** (installed through
+  `langsmith`). This removed Phase 12's deprecation warning. It also changed
+  a header type in one test (bytes header names).
+- **The reply is honest but useless by design.** It says ordering by chat is
+  unavailable. The route proves the wiring (limits, errors, logging,
+  injection), not an assistant.
+- **Debugging an agent failure needs a local reproduction:** the log says
+  which exception class, not why. This is the accepted cost of never
+  logging the customer's words.
+- **A client disconnect while the body is being read** sends no response,
+  and the request line records status 500, the existing default for "no
+  response".
+- **Sharing one compiled graph across concurrent requests** relies on
+  LangGraph's per-invocation state, with no checkpointer. It has not been
+  load-tested.

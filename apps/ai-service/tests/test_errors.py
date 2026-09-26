@@ -7,12 +7,15 @@ from fastapi.testclient import TestClient
 from jsonschema import Draft202012Validator
 
 from ai_service.core.errors import AiServiceError
+from ai_service.core.request_limits import JSON_BODY_LIMIT_BYTES
 from ai_service.schemas.errors import (
     MAX_CODE_LENGTH,
     MAX_FIELD_LENGTH,
     MAX_MESSAGE_LENGTH,
     ErrorResponse,
 )
+from tests.conftest import AgentClientFactory
+from tests.fakes import RaisingChatModel
 from tests.fixtures_routes import EXCEPTION_SENTINEL
 
 # The committed, freshness-tested artifact generated from @contracts/common's
@@ -61,6 +64,19 @@ ERROR_CASES = [
     pytest.param("GET", "/__test/boom", None, 500, "INTERNAL_ERROR", id="500"),
 ]
 
+# The body limits answer before any JSON is parsed, so their cases send raw
+# bytes: (content type, body, status, code).
+BODY_LIMIT_CASES = [
+    pytest.param(
+        "application/json",
+        b"x" * (JSON_BODY_LIMIT_BYTES + 1),
+        413,
+        "PAYLOAD_TOO_LARGE",
+        id="413",
+    ),
+    pytest.param("text/plain", b"{}", 415, "UNSUPPORTED_MEDIA_TYPE", id="415"),
+]
+
 
 @pytest.mark.parametrize(("method", "path", "body", "status", "code"), ERROR_CASES)
 def test_every_error_is_a_contract_error(
@@ -77,6 +93,37 @@ def test_every_error_is_a_contract_error(
     assert response.status_code == status
     assert response.headers["content-type"] == "application/json"
     assert response.json()["code"] == code
+    assert_contract_error(response.json(), contract_schema)
+
+
+@pytest.mark.parametrize(("content_type", "body", "status", "code"), BODY_LIMIT_CASES)
+def test_every_body_limit_error_is_a_contract_error(
+    client: TestClient,
+    contract_schema: dict[str, Any],
+    content_type: str,
+    body: bytes,
+    status: int,
+    code: str,
+) -> None:
+    response = client.post(
+        "/v1/agent/turns", content=body, headers={"content-type": content_type}
+    )
+
+    assert response.status_code == status
+    assert response.headers["content-type"] == "application/json"
+    assert response.json()["code"] == code
+    assert_contract_error(response.json(), contract_schema)
+
+
+def test_agent_failure_is_a_contract_error(
+    agent_client: AgentClientFactory, contract_schema: dict[str, Any]
+) -> None:
+    response = agent_client(RaisingChatModel()).post(
+        "/v1/agent/turns", json={"message": "Hello"}
+    )
+
+    assert response.status_code == 500
+    assert response.json()["code"] == "AGENT_FAILED"
     assert_contract_error(response.json(), contract_schema)
 
 

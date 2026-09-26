@@ -7,6 +7,9 @@ Mapping (plan.md section 11):
                                the rejected value
 - no matching route         -> 404 ROUTE_NOT_FOUND
 - wrong method              -> 405 METHOD_NOT_ALLOWED (``Allow`` kept)
+- body over 16 KB           -> 413 PAYLOAD_TOO_LARGE, sent by
+                               core/request_limits.py
+- body not application/json -> 415 UNSUPPORTED_MEDIA_TYPE, same
 - any other HTTP exception  -> its status, HTTP_ERROR, a static phrase
 - ``AiServiceError``        -> its own status/code/message
 - anything else             -> 500 INTERNAL_ERROR, sent by
@@ -37,6 +40,8 @@ INVALID_PAYLOAD = "INVALID_PAYLOAD"
 ROUTE_NOT_FOUND = "ROUTE_NOT_FOUND"
 METHOD_NOT_ALLOWED = "METHOD_NOT_ALLOWED"
 HTTP_ERROR = "HTTP_ERROR"
+PAYLOAD_TOO_LARGE = "PAYLOAD_TOO_LARGE"
+UNSUPPORTED_MEDIA_TYPE = "UNSUPPORTED_MEDIA_TYPE"
 INTERNAL_ERROR = "INTERNAL_ERROR"
 
 INTERNAL_ERROR_RESPONSE = ErrorResponse(

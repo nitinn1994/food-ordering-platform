@@ -1,7 +1,13 @@
 import pytest
 from pydantic import ValidationError
 
-from ai_service.config import ConfigError, Settings, load_settings
+from ai_service.config import (
+    TRACING_VARIABLES,
+    ConfigError,
+    Settings,
+    ensure_tracing_disabled,
+    load_settings,
+)
 
 SENTINEL = "SENTINEL_VALUE_9f2c"
 
@@ -86,3 +92,48 @@ def test_settings_are_frozen() -> None:
 
     with pytest.raises(ValidationError):
         settings.port = 1  # type: ignore[misc]
+
+
+@pytest.mark.parametrize("name", TRACING_VARIABLES)
+@pytest.mark.parametrize("value", ["true", "1", "yes", "FALSE", " ", SENTINEL])
+def test_tracing_switched_on_is_refused(name: str, value: str) -> None:
+    with pytest.raises(ConfigError) as caught:
+        load_settings({name: value})
+
+    assert caught.value.field_errors == [f"{name} (tracing_not_allowed)"]
+
+
+@pytest.mark.parametrize("name", TRACING_VARIABLES)
+@pytest.mark.parametrize("value", ["", "0", "false", "False"])
+def test_tracing_switched_off_is_accepted(name: str, value: str) -> None:
+    assert load_settings({name: value}) == load_settings({})
+
+
+def test_tracing_value_is_never_printed() -> None:
+    with pytest.raises(ConfigError) as caught:
+        load_settings({"LANGSMITH_TRACING": SENTINEL})
+
+    assert SENTINEL not in str(caught.value)
+    assert SENTINEL not in repr(caught.value)
+
+
+def test_tracing_and_field_errors_are_reported_together() -> None:
+    with pytest.raises(ConfigError) as caught:
+        load_settings({"LANGCHAIN_TRACING_V2": "true", "PORT": "abc"})
+
+    assert caught.value.field_errors == [
+        "LANGCHAIN_TRACING_V2 (tracing_not_allowed)",
+        "PORT (int_parsing)",
+    ]
+
+
+def test_ensure_tracing_disabled_accepts_an_environment_without_tracing() -> None:
+    ensure_tracing_disabled({"LANGSMITH_TRACING": "false", "PORT": "abc"})
+
+
+def test_ensure_tracing_disabled_refuses_and_never_prints_the_value() -> None:
+    with pytest.raises(ConfigError) as caught:
+        ensure_tracing_disabled({"LANGCHAIN_TRACING_V2": SENTINEL})
+
+    assert caught.value.field_errors == ["LANGCHAIN_TRACING_V2 (tracing_not_allowed)"]
+    assert SENTINEL not in str(caught.value)

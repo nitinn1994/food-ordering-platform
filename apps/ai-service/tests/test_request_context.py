@@ -88,7 +88,7 @@ def test_correlation_id_with_non_printable_characters_is_replaced(
     client: TestClient, value: str
 ) -> None:
     response = client.get(
-        "/health", headers=[("X-Correlation-Id", value.encode("latin-1"))]
+        "/health", headers=[(b"X-Correlation-Id", value.encode("latin-1"))]
     )
 
     assert response.status_code == 200

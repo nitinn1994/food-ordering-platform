@@ -1,11 +1,28 @@
-from collections.abc import Iterator
+import io
+import logging
+import os
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 
 import pytest
 from fastapi.testclient import TestClient
+from langchain_core.language_models import BaseChatModel
 
-from ai_service.config import Settings
+from ai_service.agents.graph import build_agent_graph
+from ai_service.agents.service import AgentService
+from ai_service.config import TRACING_VARIABLES, Settings
+from ai_service.core.logging import configure_logging
 from ai_service.main import create_app
 from tests import fixtures_routes
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    # Tests build models and graphs directly, never through load_settings'
+    # tracing guard, and langsmith caches what it reads from the environment.
+    # So the developer's shell is cleared of tracing switches before any test
+    # runs: the suite must never send anything to LangSmith (AC13).
+    for name in TRACING_VARIABLES:
+        os.environ.pop(name, None)
 
 
 @pytest.fixture
@@ -27,3 +44,35 @@ def fixture_client(settings: Settings) -> Iterator[TestClient]:
     app = create_app(settings, extra_routers=[fixtures_routes.router])
     with TestClient(app) as test_client:
         yield test_client
+
+
+AgentClientFactory = Callable[[BaseChatModel], TestClient]
+
+
+@pytest.fixture
+def agent_client(settings: Settings) -> Iterator[AgentClientFactory]:
+    """Builds a client whose app runs the real graph on ``model`` (a fake
+    from tests/fakes.py, say), injected through create_app."""
+    with ExitStack() as stack:
+
+        def build(model: BaseChatModel) -> TestClient:
+            service = AgentService(build_agent_graph(model))
+            app = create_app(settings, agent_service=service)
+            return stack.enter_context(TestClient(app))
+
+        yield build
+
+
+@pytest.fixture
+def log_stream(settings: Settings) -> Iterator[io.StringIO]:
+    """The service's real log configuration, writing to a buffer."""
+    root = logging.getLogger()
+    saved_handlers, saved_level = list(root.handlers), root.level
+    stream = io.StringIO()
+    configure_logging(settings, stream=stream)
+    yield stream
+    for handler in list(root.handlers):
+        root.removeHandler(handler)
+    for handler in saved_handlers:
+        root.addHandler(handler)
+    root.setLevel(saved_level)

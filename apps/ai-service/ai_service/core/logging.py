@@ -24,6 +24,11 @@ from ai_service.core.request_context import correlation_id_var, request_id_var
 # is None in __main__). Its access logger stays silent: it would print the
 # query string, and __main__ passes access_log=False anyway.
 _UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
+# HTTP client loggers print every full request URL, query string included, at
+# INFO (ADR-0019). httpx is a runtime dependency through langchain-core, and
+# httpx2/httpcore2 through langsmith; the service makes no call with them, but
+# anything that ever does must not log URLs.
+_HTTP_CLIENT_LOGGERS = ("httpx", "httpcore", "httpx2", "httpcore2")
 
 
 class ContextFilter(logging.Filter):
@@ -91,3 +96,6 @@ def configure_logging(settings: Settings, stream: IO[str] | None = None) -> None
         uvicorn_logger = logging.getLogger(name)
         uvicorn_logger.handlers.clear()
         uvicorn_logger.propagate = name != "uvicorn.access"
+
+    for name in _HTTP_CLIENT_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)

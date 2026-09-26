@@ -1,7 +1,6 @@
 import io
 import json
 import logging
-from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -14,20 +13,6 @@ from tests.fixtures_routes import EXCEPTION_SENTINEL
 HEADER_SENTINEL = "SENTINEL_HEADER_4b1e"
 QUERY_SENTINEL = "SENTINEL_QUERY_0c9a"
 BODY_SENTINEL = "SENTBODY9x"  # fits EchoBody's 10-character bound
-
-
-@pytest.fixture
-def log_stream(settings: Settings) -> Iterator[io.StringIO]:
-    root = logging.getLogger()
-    saved_handlers, saved_level = list(root.handlers), root.level
-    stream = io.StringIO()
-    configure_logging(settings, stream=stream)
-    yield stream
-    for handler in list(root.handlers):
-        root.removeHandler(handler)
-    for handler in saved_handlers:
-        root.addHandler(handler)
-    root.setLevel(saved_level)
 
 
 def lines(stream: io.StringIO) -> list[dict[str, Any]]:
@@ -139,3 +124,13 @@ def test_uvicorn_access_log_is_silenced(log_stream: io.StringIO) -> None:
     logging.getLogger("uvicorn.error").info("server started")
 
     assert [e["message"] for e in lines(log_stream)] == ["server started"]
+
+
+@pytest.mark.parametrize("name", ["httpx", "httpcore", "httpx2", "httpcore2"])
+def test_http_client_loggers_never_log_urls(log_stream: io.StringIO, name: str) -> None:
+    logging.getLogger(name).info("HTTP Request: GET /?k=%s", QUERY_SENTINEL)
+    logging.getLogger(f"{name}.child").info("child %s", QUERY_SENTINEL)
+    logging.getLogger(name).warning("kept")
+
+    assert logging.getLogger(name).getEffectiveLevel() == logging.WARNING
+    assert [e["message"] for e in lines(log_stream)] == ["kept"]

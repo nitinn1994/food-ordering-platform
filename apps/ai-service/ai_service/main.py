@@ -12,14 +12,25 @@ from collections.abc import Sequence
 from fastapi import APIRouter, FastAPI
 
 from ai_service import __version__
+from ai_service.agents.graph import build_agent_graph
+from ai_service.agents.service import AgentService
 from ai_service.api import build_router
-from ai_service.config import Settings, load_settings
+from ai_service.config import Settings, ensure_tracing_disabled, load_settings
 from ai_service.core.errors import register_exception_handlers
 from ai_service.core.logging import configure_logging
 from ai_service.core.request_context import RequestContextMiddleware
+from ai_service.core.request_limits import RequestLimitsMiddleware
+from ai_service.llm import build_chat_model
 
 
-def create_app(settings: Settings, extra_routers: Sequence[APIRouter] = ()) -> FastAPI:
+def create_app(
+    settings: Settings,
+    extra_routers: Sequence[APIRouter] = (),
+    agent_service: AgentService | None = None,
+) -> FastAPI:
+    # Before anything is built: an app must never run with LangSmith tracing
+    # on, however it was started (ADR-0020, security review S1).
+    ensure_tracing_disabled()
     # The generated API docs describe the service's internals, so they are
     # served only in development (plan.md OD12); elsewhere these paths are
     # plain 404 ROUTE_NOT_FOUND.
@@ -32,6 +43,13 @@ def create_app(settings: Settings, extra_routers: Sequence[APIRouter] = ()) -> F
         openapi_url="/openapi.json" if docs_enabled else None,
     )
     app.state.settings = settings
+    # One agent service per app, never module-level: tests inject their own
+    # (a fake model), and two apps never share one (plan.md section 16).
+    app.state.agent_service = (
+        agent_service
+        if agent_service is not None
+        else AgentService(build_agent_graph(build_chat_model()))
+    )
     register_exception_handlers(app)
 
     app.include_router(build_router())
@@ -40,6 +58,9 @@ def create_app(settings: Settings, extra_routers: Sequence[APIRouter] = ()) -> F
     for router in extra_routers:
         app.include_router(router)
 
+    # Each add_middleware wraps the previous ones. Body limits run inside the
+    # request context, so their 413/415 carry the correlation headers.
+    app.add_middleware(RequestLimitsMiddleware)
     # Added last, so it is the outermost user middleware: every response,
     # including the unhandled-error 500 it sends itself, passes through it.
     app.add_middleware(RequestContextMiddleware)

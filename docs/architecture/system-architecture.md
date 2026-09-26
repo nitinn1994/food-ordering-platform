@@ -16,7 +16,7 @@
 | Component | Stack | Owns | Must never |
 | --------- | ----- | ---- | ---------- |
 | `apps/web` | Next.js, TypeScript | Rendering, voice/text/touch input, cart presentation, UI command execution | Execute AI-generated code; treat agent text as authoritative for price, totals, or availability |
-| `apps/ai-service` | Python 3.12, FastAPI (Phase 12, ADR-0019); LangChain, LangGraph in later phases | Conversation state, tool selection, structured intent generation, natural-language explanations | Touch the database; mutate cart or order state directly |
+| `apps/ai-service` | Python 3.12, FastAPI (Phase 12, ADR-0019); LangGraph with `langchain-core` (Phase 13, ADR-0020; simulated model, no provider yet) | Conversation state, tool selection, structured intent generation, natural-language explanations | Touch the database; mutate cart or order state directly |
 | `apps/commerce-api` | NestJS, TypeScript | Menu, cart, order, pricing, business validation, authorization, idempotency | Depend on conversation history as a source of truth |
 | `packages/contracts` | TypeScript (Zod) → JSON Schema → Pydantic | The three schema families below; the shared vocabulary of the system | Contain business logic, runtime behaviour, or transport code |
 | Database | PostgreSQL, accessed through Kysely (ADR-0017, Phase 10) | Durable commerce state: menu, carts, orders | Be reachable by anything except `commerce-api` |
