@@ -14,17 +14,35 @@ message (ADR-0019).
 switched on by environment variable (Phase 13, plan.md section 17): langsmith
 is a mandatory transitive dependency of langchain-core, and tracing would send
 customer messages to an external service without approval.
+
+Phase 14 adds the Commerce API's base URL and timeout
+(docs/features/phase-14-ai-tool-calling/plan.md section 26, OD8, OD9). The URL
+is configuration only: nothing a model says can change where the client
+connects.
 """
 
 import os
 from collections.abc import Mapping
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+)
+from pydantic_core import PydanticCustomError
 
 AppEnv = Literal["development", "test", "production"]
 LogLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 LogFormat = Literal["json", "pretty"]
+
+# The same name and default apps/web uses (apps/web/src/lib/api/config.ts,
+# ADR-0018): commerce-api's local port.
+DEV_COMMERCE_API_URL = "http://127.0.0.1:3001"
 
 
 class Settings(BaseModel):
@@ -38,6 +56,38 @@ class Settings(BaseModel):
     log_level: LogLevel = "INFO"
     # "pretty" is for local reading only; production and test use "json".
     log_format: LogFormat = "json"
+    # "" means unset: DEV_COMMERCE_API_URL, except in production, where it
+    # must be set explicitly (as in apps/web). Declared after app_env, which
+    # the validator reads.
+    commerce_api_url: Annotated[str, Field(validate_default=True)] = ""
+    # Per request: connect, read, write and pool (plan.md section 11).
+    commerce_api_timeout_seconds: Annotated[float, Field(ge=0.1, le=30)] = 3.0
+
+    @field_validator("commerce_api_url")
+    @classmethod
+    def _check_commerce_api_url(cls, value: str, info: ValidationInfo) -> str:
+        # Error types only, never the value: ConfigError prints the type.
+        value = value.strip()
+        if not value:
+            if info.data.get("app_env") == "production":
+                raise PydanticCustomError("required_in_production", "required")
+            return DEV_COMMERCE_API_URL
+        try:
+            parts = urlsplit(value)
+            _ = parts.port  # reading it raises ValueError on a malformed port
+        except ValueError:
+            raise PydanticCustomError("invalid_url", "invalid") from None
+        if parts.scheme not in {"http", "https"}:
+            raise PydanticCustomError("url_scheme_not_http", "invalid")
+        if not parts.hostname:
+            raise PydanticCustomError("url_host_missing", "invalid")
+        # A base URL names a server, nothing else: no credentials, no path
+        # prefix, no query and no fragment.
+        if parts.username is not None or parts.password is not None:
+            raise PydanticCustomError("url_userinfo_not_allowed", "invalid")
+        if parts.path not in {"", "/"} or parts.query or parts.fragment:
+            raise PydanticCustomError("url_has_extra_parts", "invalid")
+        return f"{parts.scheme}://{parts.netloc}"
 
 
 # Every variable that switches tracing on, read from the installed packages:

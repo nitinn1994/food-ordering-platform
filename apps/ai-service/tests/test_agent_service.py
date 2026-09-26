@@ -12,6 +12,7 @@ from ai_service.agents.graph import RECURSION_LIMIT, AgentGraph, build_agent_gra
 from ai_service.agents.service import MAX_REPLY_LENGTH, AgentResult, AgentService
 from ai_service.core.logging import JsonFormatter
 from ai_service.llm.simulated import SIMULATED_REPLY, SimulatedChatModel
+from tests.commerce_fakes import FakeCommerce
 from tests.fakes import (
     MODEL_EXCEPTION_SENTINEL,
     RaisingChatModel,
@@ -26,7 +27,7 @@ REPLY_SENTINEL = "SENTINEL_REPLY_08be"
 
 
 def service_for(model: BaseChatModel) -> AgentService:
-    return AgentService(build_agent_graph(model))
+    return AgentService(build_agent_graph(model, FakeCommerce().tool_service()))
 
 
 class StubGraph:
@@ -78,7 +79,7 @@ def test_turns_are_deterministic() -> None:
 
 
 def test_recursion_limit_is_passed_on_every_turn() -> None:
-    stub = StubGraph({"reply": "ok"})
+    stub = StubGraph({"messages": [], "reply": "ok"})
     service = stub_service(stub)
 
     asyncio.run(service.run_turn("Hello"))
@@ -155,10 +156,19 @@ def test_success_writes_one_completion_line_without_content(
     assert record.levelno == logging.INFO
     assert record.getMessage() == "agent turn completed"
     fields = record.fields  # type: ignore[attr-defined]
-    assert set(fields) == {"outcome", "duration_ms", "message_chars", "reply_chars"}
+    assert set(fields) == {
+        "outcome",
+        "duration_ms",
+        "message_chars",
+        "reply_chars",
+        "tool_calls",
+        "tool_rounds",
+    }
     assert fields["outcome"] == "ok"
     assert fields["message_chars"] == len(SENTINEL_MESSAGE)
     assert fields["reply_chars"] == len(SIMULATED_REPLY)
+    # The simulated model never calls a tool (Phase 14 plan.md OD5).
+    assert (fields["tool_calls"], fields["tool_rounds"]) == (0, 0)
     assert SENTINEL_MESSAGE not in rendered(caplog)
     assert SIMULATED_REPLY not in rendered(caplog)
 

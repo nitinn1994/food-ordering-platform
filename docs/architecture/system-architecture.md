@@ -53,6 +53,16 @@ call `COMMERCE_API_URL` directly. So commerce-api needs no CORS, and all of
 `apps/web`'s HTTP goes through one client (`apps/web/src/lib/api/`) that
 validates every response against `@contracts/api-contracts`.
 
+**AI → API, as built (Phase 14, ADR-0021).** The "menu reads, cart
+operations" edge exists in code. ai-service's agent has five allowlisted
+tools. They call `GET /v1/menu`, `GET /v1/cart` and the three
+`/v1/cart/items` routes through one client (`apps/ai-service/ai_service/
+clients/commerce/`), which is the only code in ai-service that speaks HTTP.
+Its base URL is `COMMERCE_API_URL`, and it validates every response against
+Pydantic models generated from `api-contracts`. The edge is live only for a
+model that calls tools: the simulated model does not, so today it runs in
+tests.
+
 ## 3. Request walkthrough
 
 A conversational turn, end to end:
@@ -76,6 +86,16 @@ A conversational turn, end to end:
 9. **Web refetches authoritative state** (cart, totals, order) from
    `commerce-api`. What the user sees as their cart always came from the
    backend, never from the agent's description of it.
+
+**As built (Phase 14).** Steps 3–6 run inside the agent's tool loop. The
+agent reads the menu with `get_menu`. It does not submit an `agent-intents`
+envelope, because no commerce-api route accepts one. Instead, a write tool
+calls the REST route that executes the intent (`POST /v1/cart/items` for
+`AddItemToCart`, `PATCH` for `SetCartItemQuantity`, `DELETE` for
+`RemoveItemFromCart`), whose body is field-for-field the intent's payload.
+commerce-api validates, applies and returns the whole cart, which goes back
+to the model as the tool's result. Placing an order is not an agent tool
+(ADR-0021). Steps 7–9 (UI commands, refetch) arrive with Phase 15.
 
 A touch interaction skips steps 2–7 entirely: `apps/web` calls `commerce-api`
 directly, then refreshes. The AI service is not in the path of a button press.
@@ -172,7 +192,7 @@ than once per family:
 | `common/` | — | `ui-commands`, `agent-intents`, `commerce-api` | Shared primitives: contract version, identifiers, quantity, integer-cents money, correlation id, idempotency key, ISO-8601 timestamp, structured error |
 | `ui-commands/` | `ai-service` | `apps/web` | What the screen should do |
 | `agent-intents/` | `ai-service` | `commerce-api` | What should happen to commerce state |
-| `api-contracts/` | `commerce-api` | `apps/web`, `ai-service` | Request/response shapes for the commerce API. First populated in Phase 7 by the Menu domain (`menuResponseSchema`, `menuItemResponseSchema`); neither `apps/web` nor `ai-service` consumes it yet |
+| `api-contracts/` | `commerce-api` | `apps/web`, `ai-service` | Request/response shapes for the commerce API. First populated in Phase 7 by the Menu domain (`menuResponseSchema`, `menuItemResponseSchema`). `apps/web` validates against it since Phase 11. `ai-service` consumes generated Pydantic models of four of its shapes since Phase 14 |
 
 `commerce-api` (Phase 6) is a real runtime consumer of `common` — its error
 model (`docs/api/commerce-api.md` §5/§6) is exactly `common`'s
@@ -207,11 +227,19 @@ written twice by hand. Every contract package commits its generated JSON
 Schema under `schema/*.v1.json`, guarded by a test that regenerates each
 artifact in memory and fails if the committed file has drifted — the
 enforcement available in the absence of a CI pipeline to run codegen in
-(ADR-0012). Pydantic generation itself is not yet built. Phase 12 created
-`apps/ai-service` but consumes no contract family, so the codegen is deferred
-to the first phase that does. Its one shared shape, the `ContractError`
-error body, is a hand-written Pydantic model tested against the committed
-`common/schema/error.v1.json`: a scoped, guarded exception (ADR-0019).
+(ADR-0012). **Pydantic generation exists since Phase 14** (ADR-0021), for
+the four `api-contracts` shapes ai-service consumes: menu, cart, and the
+add and update request bodies. `apps/ai-service/scripts/generate_contracts.py`
+runs `datamodel-code-generator` over the committed JSON Schema and writes
+`ai_service/contracts/api_contracts.py`, which is committed and never edited
+by hand. A test regenerates it and fails on drift, the same guard each
+contracts package applies to its own JSON Schema. There is still no CI to
+run the generator, so the drift test is the enforcement. `agent-intents` and
+`ui-commands` are not generated yet: their discriminated unions (ADR-0012)
+are answered by the phase that consumes them. The `ContractError` error body
+stays a hand-written Pydantic model tested against the committed
+`common/schema/error.v1.json`: a scoped, guarded exception (ADR-0019), not
+widened.
 
 ## 7. Deliberately absent
 
@@ -265,6 +293,13 @@ Recorded rather than solved, because solving them is not Phase 0 work:
    this gap warns about came from, so that case is closed. The gap stays
    open for everything else, including the cart add above, and the order
    scheme is a precedent rather than a general mechanism.
+   Phase 14 made ai-service a caller of that non-idempotent add, without
+   closing the gap. Its client never retries, and a write whose response is
+   lost is reported to the model as "outcome unknown", with an instruction
+   to re-read the cart before anything else (ADR-0021). A model that asks
+   for the same add twice still adds twice. An idempotency key on
+   `POST /v1/cart/items` is the recorded follow-up, before a real model is
+   connected.
 4. **Authorization boundaries are named but undesigned.** The system assumes a
    single user for now, so there is no subject to authorize. The shape of this
    changes materially once there is. Phase 6 added no authentication and no
@@ -287,3 +322,7 @@ Recorded rather than solved, because solving them is not Phase 0 work:
    `docs/api/contracts.md` §3) and the transport-level `X-Correlation-Id`
    header relate when a request eventually carries both — no intent is
    executed yet, so nothing has had to answer this.
+   Phase 14 narrowed it: ai-service sends its turn's correlation id to
+   commerce-api as `X-Correlation-Id`, so both services' log lines for one
+   agent turn share one id (ADR-0021). No intent envelope is sent, so the
+   envelope-versus-header question is still open.

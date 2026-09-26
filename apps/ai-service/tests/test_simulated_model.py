@@ -4,6 +4,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from ai_service.llm import build_chat_model
 from ai_service.llm.simulated import SIMULATED_REPLY, SimulatedChatModel
+from ai_service.tools.registry import build_tool_registry, tool_schemas
 
 INPUT_SENTINEL = "SENTINEL_INPUT_3e7b"
 
@@ -48,3 +49,17 @@ def test_build_chat_model_returns_a_new_simulated_model_each_call() -> None:
 
     assert isinstance(first, SimulatedChatModel)
     assert first is not second
+
+
+def test_binding_tools_changes_nothing() -> None:
+    # Phase 14 plan.md OD5: the graph binds the five tools; this model
+    # accepts them and never calls one.
+    model = SimulatedChatModel()
+
+    bound = model.bind_tools(tool_schemas(build_tool_registry()))
+    reply = asyncio.run(bound.ainvoke([HumanMessage("Add a tiramisu")]))
+
+    assert bound is model
+    assert isinstance(reply, AIMessage)
+    assert reply.content == SIMULATED_REPLY
+    assert reply.tool_calls == []

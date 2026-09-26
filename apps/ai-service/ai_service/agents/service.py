@@ -6,10 +6,11 @@ message into graph state, runs one turn, maps the final state into a typed
 ``AgentResult``, translates every failure into ``AgentTurnFailedError``,
 and writes the turn's one log line.
 
-Logged: outcome, duration, lengths, and on failure the exception's class
-name. Never logged: the message, the reply, the exception's text or its
-traceback, since any of them can carry the customer's words or model output
-(ADR-0019, S2).
+Logged: outcome, duration, lengths, how many tool calls and tool rounds a
+successful turn used (Phase 14 plan.md section 21), and on failure the
+exception's class name. Never logged: the message, the reply, the
+exception's text or its traceback, since any of them can carry the
+customer's words or model output (ADR-0019, S2).
 """
 
 import logging
@@ -21,6 +22,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ai_service.agents.errors import AgentTurnFailedError
 from ai_service.agents.graph import RECURSION_LIMIT, AgentGraph
+from ai_service.agents.nodes import tool_calls_requested, tool_rounds
 from ai_service.agents.state import AgentState
 
 MAX_REPLY_LENGTH = 4000
@@ -52,6 +54,7 @@ class AgentService:
             # input, so it must never reach the last-resort handler, which
             # logs a traceback (ADR-0019, S2).
             result = AgentResult(reply=final["reply"])
+            messages = final["messages"]
         except Exception as error:
             # Exception, not BaseException: cancellation (a client going
             # away, shutdown) must propagate.
@@ -76,6 +79,8 @@ class AgentService:
                     "duration_ms": _elapsed_ms(started_at),
                     "message_chars": len(message),
                     "reply_chars": len(result.reply),
+                    "tool_calls": tool_calls_requested(messages),
+                    "tool_rounds": tool_rounds(messages),
                 }
             },
         )

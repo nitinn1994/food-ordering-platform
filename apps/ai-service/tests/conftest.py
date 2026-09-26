@@ -1,8 +1,9 @@
 import io
 import logging
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Iterator
 from contextlib import ExitStack
+from typing import Protocol
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,6 +15,7 @@ from ai_service.config import TRACING_VARIABLES, Settings
 from ai_service.core.logging import configure_logging
 from ai_service.main import create_app
 from tests import fixtures_routes
+from tests.commerce_fakes import FakeCommerce
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -46,18 +48,28 @@ def fixture_client(settings: Settings) -> Iterator[TestClient]:
         yield test_client
 
 
-AgentClientFactory = Callable[[BaseChatModel], TestClient]
+class AgentClientFactory(Protocol):
+    def __call__(
+        self, model: BaseChatModel, commerce: FakeCommerce | None = None
+    ) -> TestClient: ...
 
 
 @pytest.fixture
 def agent_client(settings: Settings) -> Iterator[AgentClientFactory]:
     """Builds a client whose app runs the real graph on ``model`` (a fake
-    from tests/fakes.py, say), injected through create_app."""
+    from tests/fakes.py, say), injected through create_app, with the real
+    tools calling ``commerce`` (a FakeCommerce; an empty one by default,
+    where every route is 404). The app owns and closes the HTTP client."""
     with ExitStack() as stack:
 
-        def build(model: BaseChatModel) -> TestClient:
-            service = AgentService(build_agent_graph(model))
-            app = create_app(settings, agent_service=service)
+        def build(
+            model: BaseChatModel, commerce: FakeCommerce | None = None
+        ) -> TestClient:
+            fake = commerce or FakeCommerce()
+            http = fake.http_client(settings)
+            tool_service = fake.tool_service(http)
+            service = AgentService(build_agent_graph(model, tool_service))
+            app = create_app(settings, agent_service=service, commerce_http_client=http)
             return stack.enter_context(TestClient(app))
 
         yield build

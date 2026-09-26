@@ -1,6 +1,6 @@
-"""Structural guards for system-architecture.md section 4.1/4.2 and plan.md
-section 10: the AI service never touches the commerce database, and this
-phase adds no model provider, AI framework or outbound HTTP client.
+"""Structural guards for system-architecture.md section 4.1/4.2: the AI
+service never touches the commerce database, and admits each AI framework,
+the outbound HTTP client and every internal layer only where a phase put it.
 
 Phase 13 (docs/features/phase-13-langgraph-agent-foundation/plan.md section
 18) admitted exactly two AI packages, each confined to a location: langgraph
@@ -12,9 +12,19 @@ Enforced by review only until now (section 8, gap 2); this makes the part of
 it a test *can* check a failing test rather than a convention. It is still
 not network or credential separation.
 
-A later phase that legitimately adds, say, LangGraph or a Commerce API HTTP
-client changes the allowlists here in the same reviewed change - that is
-the point: the dependency becomes a visible decision, never a side effect.
+Phase 14 (docs/features/phase-14-ai-tool-calling/plan.md sections 3, 24,
+OD3, OD4, OD9) admitted httpx as a runtime dependency, but only under
+``ai_service/clients/``, the one package that speaks HTTP. ``tools/`` stays
+framework-free and ``agents/`` never reaches the client directly. The
+contract generator is a dev dependency that service code never imports.
+Tool definitions (``langchain_core.tools``) and ToolNode
+(``langgraph.prebuilt``) stay forbidden: tools are this service's own
+registry. One URL setting, ``commerce_api_url``, is exempt from the setting
+name rule by name.
+
+A later phase that legitimately adds a dependency or lifts a ban changes the
+allowlists here in the same reviewed change - that is the point: the
+dependency becomes a visible decision, never a side effect.
 """
 
 import ast
@@ -27,8 +37,15 @@ from ai_service.config import Settings
 SERVICE_ROOT = Path(__file__).resolve().parents[1]
 PACKAGE_ROOT = SERVICE_ROOT / "ai_service"
 
-ALLOWED_RUNTIME = {"fastapi", "uvicorn", "pydantic", "langgraph", "langchain-core"}
-ALLOWED_DEV = {"pytest", "httpx", "jsonschema", "ruff", "mypy"}
+ALLOWED_RUNTIME = {
+    "fastapi",
+    "uvicorn",
+    "pydantic",
+    "langgraph",
+    "langchain-core",
+    "httpx",
+}
+ALLOWED_DEV = {"pytest", "jsonschema", "ruff", "mypy", "datamodel-code-generator"}
 
 # Modules the service package must never import. A plain entry matches that
 # module and its submodules ("langgraph.prebuilt" matches
@@ -54,8 +71,12 @@ FORBIDDEN_IMPORTS = {
     # objects from JSON, a risky surface for untrusted data (security review
     # S2). Nothing needs it.
     "langchain_core.load",
-    # Outbound HTTP: the Commerce API client is a later phase.
-    "httpx", "requests", "aiohttp", "urllib3",
+    # Outbound HTTP other than httpx, which LOCATION_SCOPED confines to
+    # clients/ (Phase 14): one HTTP client, in one place.
+    "requests", "aiohttp", "urllib3",
+    # The contract generator runs from scripts/ only; its output is plain
+    # Pydantic (Phase 14, OD3).
+    "datamodel_code_generator",
     # Test code never ships.
     "tests",
 }  # fmt: skip
@@ -68,9 +89,24 @@ PREFIX_EXCEPTIONS = {"langchain_core"}
 LOCATION_SCOPED = {
     "langgraph": {"agents"},
     "langchain_core": {"agents", "llm"},
+    "httpx": {"clients"},
+}
+
+# ai_service/ subpackage -> the ai_service subpackages it must not import
+# (Phase 14 plan.md section 3). The graph reaches commerce-api only through
+# tools; tools and the client never reach back up; generated contracts
+# depend on nothing of ours.
+LAYER_FORBIDDEN = {
+    "agents": {"clients"},
+    "tools": {"agents", "api", "llm"},
+    "clients": {"agents", "api", "llm", "tools"},
+    "contracts": {"agents", "api", "clients", "core", "llm", "schemas", "tools"},
 }
 
 FORBIDDEN_SETTING_NAME = re.compile(r"database|(^|_)db(_|$)|_url$|api_key|secret|token")
+# Exempt by exact name, never by pattern: the Commerce API's base URL
+# (Phase 14, OD9). Any other *_url setting still fails.
+ALLOWED_URL_SETTINGS = {"commerce_api_url"}
 
 
 def _requirement_name(requirement: str) -> str:
@@ -101,6 +137,21 @@ def _is_misplaced(relative_path: Path, module: str) -> bool:
     if allowed is None:
         return False
     return len(relative_path.parts) < 2 or relative_path.parts[0] not in allowed
+
+
+def _crosses_layer(relative_path: Path, module: str) -> bool:
+    """True if ``module`` is an ai_service subpackage that the subpackage
+    holding ``relative_path`` (relative to ai_service/) must not import."""
+    parts = module.split(".")
+    if len(parts) < 2 or parts[0] != "ai_service" or len(relative_path.parts) < 2:
+        return False
+    return parts[1] in LAYER_FORBIDDEN.get(relative_path.parts[0], set())
+
+
+def _is_forbidden_setting(name: str) -> bool:
+    return name not in ALLOWED_URL_SETTINGS and bool(
+        FORBIDDEN_SETTING_NAME.search(name)
+    )
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -169,6 +220,13 @@ IMPORT_TIME_FORBIDDEN_CALLS = {
     "build_agent_graph",
     "AgentService",
     "SimulatedChatModel",
+    # Phase 14: one HTTP client per app, closed on shutdown (plan.md
+    # section 9, OD13), and one tool registry and service per app.
+    "AsyncClient",
+    "build_commerce_http_client",
+    "CommerceClient",
+    "build_tool_registry",
+    "ToolService",
 }
 
 
@@ -234,6 +292,10 @@ def test_forbidden_matcher_catches_prefixes_and_submodules() -> None:
     assert not _is_forbidden("langchain_core.language_models")
     assert not _is_forbidden("langchain_core.toolkit_lookalike")
     assert not _is_forbidden("langchain_core.loader_lookalike")
+    assert _is_forbidden("requests")
+    assert _is_forbidden("datamodel_code_generator.format")
+    # Location-scoped instead (test_location_matcher).
+    assert not _is_forbidden("httpx")
 
 
 def test_from_import_names_are_scanned(tmp_path: Path) -> None:
@@ -258,9 +320,54 @@ def test_location_matcher() -> None:
     assert _is_misplaced(Path("main.py"), "langgraph.graph")
     assert _is_misplaced(Path("core/errors.py"), "langchain_core")
     assert not _is_misplaced(Path("api/agent.py"), "fastapi")
+    assert not _is_misplaced(Path("clients/commerce/client.py"), "httpx")
+    assert _is_misplaced(Path("tools/service.py"), "httpx")
+    assert _is_misplaced(Path("agents/nodes.py"), "httpx")
+    assert _is_misplaced(Path("main.py"), "httpx")
+    assert _is_misplaced(Path("tools/registry.py"), "langchain_core.messages")
+    assert _is_misplaced(Path("tools/registry.py"), "langgraph.graph")
+    assert _is_misplaced(Path("clients/commerce/client.py"), "langgraph")
+
+
+def test_internal_layers_are_respected() -> None:
+    sources = sorted(PACKAGE_ROOT.rglob("*.py"))
+
+    violations = [
+        f"{path.relative_to(SERVICE_ROOT)}: {module}"
+        for path in sources
+        for module in sorted(_imported_modules(path))
+        if _crosses_layer(path.relative_to(PACKAGE_ROOT), module)
+    ]
+
+    assert violations == []
+
+
+def test_layer_matcher() -> None:
+    assert _crosses_layer(Path("agents/nodes.py"), "ai_service.clients.commerce")
+    assert _crosses_layer(Path("tools/service.py"), "ai_service.agents.graph")
+    assert _crosses_layer(Path("clients/commerce/client.py"), "ai_service.tools")
+    assert _crosses_layer(Path("contracts/api_contracts.py"), "ai_service.core")
+    assert not _crosses_layer(Path("agents/nodes.py"), "ai_service.tools.service")
+    assert not _crosses_layer(Path("tools/service.py"), "ai_service.clients")
+    assert not _crosses_layer(Path("tools/schemas.py"), "ai_service.contracts")
+    assert not _crosses_layer(
+        Path("clients/commerce/client.py"), "ai_service.core.request_context"
+    )
+    # main.py is the composition root: it wires every layer.
+    assert not _crosses_layer(Path("main.py"), "ai_service.clients.commerce")
 
 
 def test_no_setting_names_a_database_url_or_credential() -> None:
-    offending = [n for n in Settings.model_fields if FORBIDDEN_SETTING_NAME.search(n)]
+    offending = [n for n in Settings.model_fields if _is_forbidden_setting(n)]
 
     assert offending == []
+
+
+def test_setting_name_rule_exempts_only_the_commerce_api_url() -> None:
+    assert not _is_forbidden_setting("commerce_api_url")
+    assert not _is_forbidden_setting("commerce_api_timeout_seconds")
+    assert _is_forbidden_setting("database_url")
+    assert _is_forbidden_setting("other_url")
+    assert _is_forbidden_setting("commerce_api_callback_url")
+    assert _is_forbidden_setting("commerce_api_token")
+    assert _is_forbidden_setting("commerce_api_key")

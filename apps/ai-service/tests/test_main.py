@@ -2,10 +2,14 @@ from typing import Any
 
 import pytest
 import uvicorn
+from fastapi.testclient import TestClient
 
 from ai_service import __main__ as entry
+from ai_service import main as main_module
+from ai_service.clients.commerce import build_commerce_http_client
 from ai_service.config import TRACING_VARIABLES, ConfigError, Settings
 from ai_service.main import create_app
+from tests.commerce_fakes import FakeCommerce
 
 
 @pytest.fixture
@@ -19,7 +23,15 @@ def uvicorn_calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     # main() configures the process-wide root logger; keep that out of the
     # test process (tests/test_logging.py covers configure_logging itself).
     monkeypatch.setattr(entry, "configure_logging", lambda settings: None)
-    for name in ("APP_ENV", "HOST", "PORT", "LOG_LEVEL", "LOG_FORMAT"):
+    for name in (
+        "APP_ENV",
+        "HOST",
+        "PORT",
+        "LOG_LEVEL",
+        "LOG_FORMAT",
+        "COMMERCE_API_URL",
+        "COMMERCE_API_TIMEOUT_SECONDS",
+    ):
         monkeypatch.delenv(name, raising=False)
     # The developer's shell must not decide the outcome (tracing guard).
     for name in TRACING_VARIABLES:
@@ -94,3 +106,57 @@ def test_create_app_refuses_tracing_however_it_is_called(
         create_app(Settings(app_env="test"))
 
     assert caught.value.field_errors == [f"{name} (tracing_not_allowed)"]
+
+
+# The Commerce API HTTP client's lifecycle (Phase 14 plan.md section 9, OD13;
+# AC25).
+
+
+def test_the_app_closes_its_commerce_client_on_shutdown() -> None:
+    http = FakeCommerce().http_client()
+    app = create_app(Settings(app_env="test"), commerce_http_client=http)
+
+    with TestClient(app):
+        assert not http.is_closed
+
+    assert http.is_closed
+
+
+def test_the_default_model_never_calls_commerce_api() -> None:
+    commerce = FakeCommerce()
+    http = commerce.http_client()
+    app = create_app(Settings(app_env="test"), commerce_http_client=http)
+
+    with TestClient(app) as client:
+        assert client.get("/health").status_code == 200
+        turn = client.post("/v1/agent/turns", json={"message": "Add a tiramisu"})
+
+    # The default model is simulated and never calls a tool, so neither
+    # liveness nor a turn needs commerce-api (AC22).
+    assert turn.status_code == 200
+    assert commerce.requests == []
+
+
+def test_each_default_app_builds_its_own_client_and_closes_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The path taken when no client is injected: create_app builds one from
+    # settings. The real builder runs; this only records what it returns.
+    built: list[Any] = []
+
+    def recording_builder(settings: Settings) -> Any:
+        http = build_commerce_http_client(settings)
+        built.append(http)
+        return http
+
+    monkeypatch.setattr(main_module, "build_commerce_http_client", recording_builder)
+    settings = Settings(app_env="test", commerce_api_url="http://commerce.test:4000")
+
+    first, second = create_app(settings), create_app(settings)
+    with TestClient(first), TestClient(second):
+        assert [c.is_closed for c in built] == [False, False]
+
+    assert len(built) == 2
+    assert built[0] is not built[1]
+    assert all(str(c.base_url) == "http://commerce.test:4000" for c in built)
+    assert all(c.is_closed for c in built)

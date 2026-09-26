@@ -1,10 +1,11 @@
 [project]
 name = "ai-service"
 version = "0.0.0"
-description = "Food Ordering Platform AI service (FastAPI, LangGraph). Simulated model only: no provider, tools or memory yet."
+description = "Food Ordering Platform AI service (FastAPI, LangGraph). Simulated model; Commerce API tools over HTTP; no provider or memory yet."
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.141.1",
+    "httpx>=0.28.1",
     "langchain-core>=1.6.5",
     "langgraph>=1.2.12",
     "pydantic>=2.13.5",
@@ -13,7 +14,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
+    "datamodel-code-generator>=0.83.0",
     "jsonschema>=4.26.0",
     "mypy>=2.3.1",
     "pytest>=9.1.1",

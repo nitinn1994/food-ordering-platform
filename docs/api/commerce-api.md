@@ -3,9 +3,11 @@
 **Status:** Foundation (Phase 6), a read-only Menu domain (Phase 7), a
 Cart domain (Phase 8), and an Order domain (Phase 9). `GET /health`,
 `GET /v1/menu`, `GET /v1/menu/items/:itemId`, the four `/v1/cart` routes
-(§12), and `POST /v1/orders` / `GET /v1/orders/:orderId` (§13) exist. No
-consumer calls any of them yet. Since Phase 10 all of it is stored in
-PostgreSQL (ADR-0017) and survives a restart.
+(§12), and `POST /v1/orders` / `GET /v1/orders/:orderId` (§13) exist.
+`apps/web` calls them through its proxy (Phase 11, ADR-0018). Since Phase 14,
+ai-service's agent tools call `GET /v1/menu` and the four cart routes, and
+nothing else (ADR-0021). Since Phase 10 all of it is stored in PostgreSQL
+(ADR-0017) and survives a restart.
 **Related:** [`system-architecture.md`](../architecture/system-architecture.md)
 §1, §5 · [`architecture-decisions.md`](../architecture/architecture-decisions.md)
 ADR-0013, ADR-0014, ADR-0015, ADR-0016, ADR-0017 ·
@@ -410,7 +412,10 @@ snapshot and empties the cart. There is no payment: a new order's status is
   `system-architecture.md` §8 gap 4 remains open.
 - **Idempotency beyond order creation** — `POST /v1/orders` is the only
   route that uses an idempotency key (§13). Everywhere else, including
-  `POST /v1/cart/items`, is still `system-architecture.md` §8 gap 3.
+  `POST /v1/cart/items`, is still `system-architecture.md` §8 gap 3. Since
+  Phase 14, ai-service calls `POST /v1/cart/items` and never retries it. A
+  timeout is reported to its model as "outcome unknown", with an instruction
+  to re-read the cart (ADR-0021).
 - **Rate limiting, CORS** — not configured. Since Phase 11 `apps/web` does
   call this service, but through its own same-origin proxy
   (`/api/commerce/v1/*` → `/v1/*`), so the browser never makes a

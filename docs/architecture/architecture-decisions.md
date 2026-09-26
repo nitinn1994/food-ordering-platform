@@ -39,6 +39,7 @@ made, and what they cost.
 | [0018](#adr-0018--apps-web-on-commerce-api-a-same-origin-proxy-one-api-client-and-server-state-without-a-new-library) | `apps/web` on commerce-api: a same-origin proxy, one API client, and server state without a new library | Accepted |
 | [0019](#adr-0019--ai-service-foundation-uv-fastapi-the-commerce-api-error-and-correlation-model-and-tested-boundaries) | ai-service foundation: uv, FastAPI, the commerce-api error and correlation model, and tested boundaries | Accepted |
 | [0020](#adr-0020--langgraph-agent-foundation-a-linear-graph-on-a-simulated-model-an-agent-service-and-refused-tracing) | LangGraph agent foundation: a linear graph on a simulated model, an agent service, and refused tracing | Accepted |
+| [0021](#adr-0021--ai-tool-calling-an-allowlisted-tool-registry-one-commerce-api-client-and-generated-contract-models) | AI tool calling: an allowlisted tool registry, one Commerce API client, and generated contract models | Accepted |
 
 ---
 
@@ -1575,3 +1576,172 @@ Two facts surfaced during planning and implementation:
 - **Sharing one compiled graph across concurrent requests** relies on
   LangGraph's per-invocation state, with no checkpointer. It has not been
   load-tested.
+
+---
+
+## ADR-0021 — AI tool calling: an allowlisted tool registry, one Commerce API client, and generated contract models
+
+**Status:** Accepted · **Date:** 2026-09-26 (Phase 14) · **Decisions:**
+`docs/features/phase-14-ai-tool-calling/plan.md` §30, OD1–OD16, approved as
+recommended
+
+### Context
+
+ADR-0020 gave `apps/ai-service` a LangGraph agent with no way to read the
+menu or act on the cart. `system-architecture.md` §3 steps 3–6 say the agent
+reads menu data from commerce-api and asks it to change the cart. §4.1 and
+§4.2 say it may never reach the database or apply a change itself.
+
+Several facts shaped the design:
+
+- **commerce-api has no route that accepts an `agent-intents` envelope.** Its
+  cart routes are the executors of the three adopted intents, with bodies
+  field-for-field the intent payloads.
+- **Cart identity is resolved on the server:** one fixed owner (ADR-0015).
+- **`POST /v1/cart/items` is a delta with no idempotency key** (§8 gap 3).
+- **`agent-intents` declined `PlaceOrder` and `ClearCart`**, and commerce-api
+  has no clear-cart, category or order-list route.
+- **Turns are stateless** (ADR-0020), so a confirmation cannot span two
+  turns.
+- **ADR-0019 named this phase as the point to build the Pydantic codegen**,
+  rather than widen the hand-written `ContractError` exception.
+
+### Decision
+
+1. **Five tools, a fixed allowlist:** `get_menu`, `get_cart` (read),
+   `add_cart_item`, `set_cart_item_quantity`, `remove_cart_item` (write)
+   (OD1).
+   - `tools/registry.py` declares them literally, in a read-only mapping.
+     There is no discovery or runtime registration.
+   - The schemas the model is bound to are built from the same mapping.
+   - `get_menu_item` is omitted as redundant. There is no tool for
+     categories, order lists or clearing the cart, because commerce-api has
+     no such route.
+2. **No order tools** (OD2). `create_order` and `get_order` are deferred:
+   - no cross-turn confirmation is possible;
+   - customer details are PII;
+   - `PlaceOrder` was declined;
+   - checkout is a UI flow.
+
+   The prompt sends the customer to checkout.
+3. **Our own registry and tool step, not LangChain tools** (OD4).
+   - `execute_tools` in `agents/nodes.py` runs calls in order, one at a
+     time, and answers every call id exactly once.
+   - Tool schemas are plain JSON-schema dicts passed to `bind_tools`.
+   - `langchain_core.tools` and `langgraph.prebuilt` stay import-forbidden.
+4. **Layering, enforced by `tests/test_boundaries.py`:**
+   - `agents/` → `tools/` → `clients/commerce/` → HTTP.
+   - `httpx` is location-scoped to `clients/`.
+   - `tools/` imports no framework. `agents/` never imports `clients/`.
+   - Generated `contracts/` import nothing of ours.
+5. **One Commerce API client** (`clients/commerce/client.py`):
+   - **Surface:** five typed methods, and no public method takes a URL,
+     path, method or headers. Routes are constants.
+   - **Base URL:** only from `COMMERCE_API_URL` (OD9, the same name and
+     default as `apps/web`). Required in production, and validated to a
+     bare scheme, host and port.
+   - **Hardening:** `follow_redirects=False` and `trust_env=False`. Path
+     item ids are checked against the contract's own constraints before
+     interpolation.
+   - **Headers:** the turn's `X-Correlation-Id` is forwarded (OD16).
+   - **Lifecycle:** one `httpx.AsyncClient` per app, closed on shutdown
+     (OD13).
+6. **Timeouts, no retries** (OD7, OD8).
+   - `COMMERCE_API_TIMEOUT_SECONDS` defaults to 3.0 s per request.
+   - A transport failure before sending means unavailable.
+   - A timeout or dropped connection after sending means unavailable for a
+     read, but **outcome unknown** for a write.
+   - Nothing is retried.
+7. **Tool inputs are strict** (OD10). Unknown keys are rejected, there is no
+   coercion, and field names follow the contract (`itemId`). The constraints
+   are reused from the generated contract model.
+8. **Tool results are `ToolResult {ok, data | error}`** (OD12).
+   - `data` is the validated commerce-api resource.
+   - `error` mirrors `ContractError`.
+   - commerce-api's five domain codes pass through unchanged. This layer
+     adds `UNKNOWN_TOOL`, `INVALID_TOOL_ARGUMENTS`,
+     `TOOL_CALL_LIMIT_EXCEEDED`, `COMMERCE_UNAVAILABLE`,
+     `COMMERCE_OUTCOME_UNKNOWN`, `COMMERCE_REQUEST_REJECTED` and
+     `COMMERCE_BAD_RESPONSE`.
+   - Messages are fixed per code. commerce-api's text never reaches the
+     model.
+   - Tool failures are data, never turn failures. An unexpected exception
+     (a bug) still fails the turn.
+9. **A bounded loop** (OD6).
+   - The graph goes `call_model`, then either `execute_tools` (which loops
+     back to `call_model`) or `finalize_reply`.
+   - `MAX_TOOL_ROUNDS = 4`, `MAX_TOOL_CALLS_PER_TURN = 8` (excess calls are
+     refused and do not run), and `RECURSION_LIMIT = 12`.
+   - `MAX_TOOL_CALLS_PER_MESSAGE = 16`: one model message asking for more
+     calls than that (well-formed or not) is unusable output. Nothing runs,
+     nothing is logged per call, and the turn fails with `AGENT_FAILED`.
+     So model output cannot scale a turn's work or log volume (security
+     review S1).
+   - Rounds and calls are derived from the messages, so `AgentState` is
+     unchanged.
+   - Breaching the round limit is `AGENT_FAILED`.
+10. **A short system prompt** (OD15, `agents/prompts.py`). It is sent
+    first, never stored in state.
+11. **The simulated model stays non-tool-calling** (OD5). `bind_tools`
+    accepts and ignores the tools. The loop is proven by scripted models in
+    tests, plus an opt-in live test of the client against a running
+    commerce-api (OD14).
+12. **Pydantic codegen for `api-contracts`** (OD3), and only its four
+    consumed shapes (menu, cart, add request, update request).
+    - `scripts/generate_contracts.py` runs `datamodel-code-generator`
+      (dev-only).
+    - The output, `ai_service/contracts/api_contracts.py`, is committed and
+      drift-tested.
+    - Only generated class names are adjusted. Constraints are untouched.
+    - `agent-intents` envelopes are not sent, and intents are not generated
+      (OD11).
+13. **Logging.**
+    - One `ai_service.tools` line per call: tool, category, outcome, error
+      code, commerce status, duration.
+    - The turn line adds `tool_calls` and `tool_rounds`.
+    - Never logged: arguments, results, commerce-api messages or bodies, or
+      an unregistered tool name.
+14. **Identity:** none is sent. The agent acts on the one server-resolved
+    cart, the same one `apps/web` shows.
+
+### Rules this sets for later phases
+
+- **A new tool** is a reviewed change to the registry and its pinned test.
+  It maps to one fixed commerce-api route. Its input is strict, with
+  contract constraints.
+- **Writes are never retried by ai-service** until the route they call
+  accepts an idempotency key.
+- **Order tools need all of:** memory (a conversation id), a
+  server-verifiable confirmation (a UI command), a per-proposal
+  `idempotencyKey`, and a PII logging review.
+- **When authentication arrives**, ai-service forwards the end user's own
+  credential to commerce-api. It never uses a service-wide credential able
+  to act as any user, and never asserts an identity itself.
+- **A new consumed contract shape** is added to `generate_contracts.py`,
+  never hand-written.
+- **A real provider** must honour `bind_tools` with dict schemas. It is
+  judged by an evaluation of tool selection and of the prompt's rules,
+  which the simulated model cannot exercise.
+
+### Consequences
+
+- **The agent can act on the cart, but only as far as commerce-api
+  allows.** Every write is re-validated there.
+- **A duplicate add in one model message adds twice.** It is bounded by the
+  99-per-line limit and the per-turn call cap. An idempotency key on
+  `POST /v1/cart/items` is the recorded follow-up before a real model is
+  connected.
+- **Cart changes made before a turn fails stay applied.** The customer sees
+  an error, and the web cart shows the truth on refresh.
+- **Worst-case tool I/O per turn is about 24 s** (8 calls × 3 s) if
+  commerce-api hangs. There is no per-turn deadline yet.
+- **`datamodel-code-generator` adds 12 dev-only packages** (including
+  `black`, `isort` and `jinja2`). The service cannot import it.
+- **Strict response models reject an additive commerce-api field** until the
+  contract is updated and the models are regenerated, the same as
+  `apps/web`.
+- **The live path runs in tests only** until a provider arrives, because
+  the simulated model never calls a tool. The client itself was verified
+  against a running commerce-api (the opt-in live check), and so was one
+  scripted end-to-end turn, whose correlation id appeared in commerce-api's
+  logs.
