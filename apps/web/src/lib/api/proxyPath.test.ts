@@ -13,6 +13,8 @@ describe("isForwardableProxyPath", () => {
     "/api/commerce/v1/orders",
     "/api/commerce/v1/orders/9d3a5a7b-3458-41c1-8585-871e24db8cfd",
     "/api/commerce/v1/cart/items/a%20b",
+    // The rewrite matches case-insensitively and always forwards to /v1.
+    "/API/COMMERCE/V1/cart",
   ])("forwards %s", (path) => {
     expect(isForwardableProxyPath(path)).toBe(true);
   });
@@ -29,6 +31,11 @@ describe("isForwardableProxyPath", () => {
     ["anything outside /v1", "/api/commerce/health"],
     ["another version", "/api/commerce/v2/cart"],
     ["the bare prefix", "/api/commerce/v1"],
+    // Phase 15 S2: case variants of every shape above.
+    ["an upper-case dot-dot", "/API/COMMERCE/v1/../health"],
+    ["a mixed-case encoded slash", "/Api/Commerce/v1/..%2fhealth"],
+    ["a mixed-case encoded dot-dot", "/API/commerce/v1/%2e%2e/health"],
+    ["an upper-case path outside /v1", "/API/COMMERCE/health"],
   ])("refuses %s", (_case, path) => {
     expect(isForwardableProxyPath(path)).toBe(false);
   });

@@ -85,6 +85,24 @@ code that handles speech (`src/lib/voice/`) is barred by ESLint from
 reaching cart state, the API client, the dispatcher, the agent turn and the
 contracts.
 
+**Production reference topology (Phase 18, ADR-0024).** In the
+reference deployment (`infrastructure/docker/compose.prod.yaml`), nginx is
+the only published service. It terminates TLS, redirects HTTP to HTTPS,
+caps request bodies at 32 KB and applies per-client rate limits, then
+forwards to `apps/web` only. The three apps run as non-root containers on
+private networks:
+
+- `edge`: proxy ↔ web.
+- `app`: web ↔ ai-service ↔ commerce-api. Internal.
+- `data`: commerce-api and migrate ↔ database. Routable, so they can reach
+  a managed database off the host.
+
+ai-service is attached to `app` only, so in this topology it has no route
+to the database at all. The database is managed PostgreSQL. A one-shot
+`migrate` container runs forward-only migrations before commerce-api
+starts. Nothing in the repository deploys this; the runbook
+(`docs/operations/production-runbook.md`) describes how an operator does.
+
 ## 3. Request walkthrough
 
 A conversational turn, end to end:
@@ -302,8 +320,19 @@ Kubernetes, production infrastructure, distributed tracing, multi-region.
 `infrastructure/database/` is empty too. They should stay empty until a phase
 explicitly scopes them, and any work inside them classifies as HIGH risk on
 the infrastructure dimension. Phase 10 scoped `infrastructure/docker/` for
-one thing only: `compose.yaml`, a local-development PostgreSQL bound to
-127.0.0.1 (ADR-0017). It has no API container and no production settings.
+`compose.yaml`, a local-development PostgreSQL bound to 127.0.0.1
+(ADR-0017), which is still development-only. Phase 18 added the
+production reference topology beside it: `compose.prod.yaml`,
+`nginx/nginx.conf` and one Dockerfile per app (ADR-0024; §2). That is a
+reference to deploy from, not a deployment: no hosting, DNS, certificates or
+secret store is provisioned by the repository.
+
+Still deliberately absent after Phase 18:
+
+- authentication and per-user identity (release blocker B1);
+- a metrics backend and an external error tracker (ADR-0024 decision 12);
+- a distributed rate limiter;
+- Redis, brokers, Kubernetes.
 
 ## 8. Known architectural gaps
 
@@ -324,6 +353,13 @@ Recorded rather than solved, because solving them is not Phase 0 work:
    dependency or is imported, or if a setting is named like a database URL
    (ADR-0019). That is a test, not network or credential separation, so this
    gap stays open.
+   Phase 18 **narrowed** it for the reference deployment. In
+   `compose.prod.yaml`, ai-service is attached only to the internal `app`
+   network, and the database only to `data`. ai-service cannot even resolve
+   the database host, verified live (ADR-0024). The gap stays open for any
+   deployment that does not reproduce that network layout, and the
+   single-role database is still undivided. The runbook documents the
+   migrator/app role split for operators.
 3. **Idempotency is named but undesigned.** `CLAUDE.md` requires it of
    `commerce-api`; the key strategy and retry semantics are undefined. This
    matters most where the AI service retries an intent after a timeout, which
@@ -344,6 +380,10 @@ Recorded rather than solved, because solving them is not Phase 0 work:
    this gap warns about came from, so that case is closed. The gap stays
    open for everything else, including the cart add above, and the order
    scheme is a precedent rather than a general mechanism.
+   Phase 18 closed a race inside that scheme. The key lookup ran outside
+   the transaction, so a client retry that overlapped its own first attempt
+   got 409 or 422 instead of a replay. It now re-checks the key after losing
+   the race (ADR-0024 decision 7).
    Phase 14 made ai-service a caller of that non-idempotent add, without
    closing the gap. Its client never retries, and a write whose response is
    lost is reported to the model as "outcome unknown", with an instruction
@@ -364,6 +404,11 @@ Recorded rather than solved, because solving them is not Phase 0 work:
    there is still exactly one to replace; an order read by id through
    another owner is a 404, but with one owner that is structure, not
    access control (ADR-0016).
+   Phase 18 made this **release blocker B1**
+   (`docs/operations/production-readiness-checklist.md`). With one owner,
+   anyone who knows an order's id can read its customer details. The
+   system must not serve untrusted multi-user traffic until an identity
+   phase replaces the binding (ADR-0024 decision 2).
 5. **`X-Correlation-Id` reaches `commerce-api`'s logs but nothing consumes
    it yet.** Phase 5's open question 3 ("does `correlationId` need to
    survive into commerce-api's own logs?") is now answered — Phase 6's

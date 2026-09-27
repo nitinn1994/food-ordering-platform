@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import styles from "./page.module.css";
 
 // Next.js renders this automatically if page.tsx's async work (getMenu())
-// rejects. Error boundaries in the App Router must be Client Components.
+// rejects, or anything below the root layout throws — on /cart and
+// /checkout as well, so the copy names no page (Phase 18, plan.md §10).
+// Error boundaries in the App Router must be Client Components.
 //
 // The copy is static: `error` may carry commerce-api or network detail
 // (an ApiError's developer summary, or anything else a Server Component
@@ -36,7 +38,7 @@ export default function Error({
     <main className={styles.main}>
       <h1>Food Ordering Platform</h1>
       <p role="alert">
-        We couldn&apos;t load the menu right now. Please try again.
+        We couldn&apos;t load this page right now. Please try again.
       </p>
       <button type="button" onClick={retry}>
         Try again

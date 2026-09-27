@@ -39,6 +39,14 @@ def main(argv: list[str] | None = None) -> int:
         # its own redacted completion line instead (plan.md section 12).
         access_log=False,
         log_config=None,
+        # Phase 18 (plan.md AC14): no "server: uvicorn" banner; in-flight
+        # requests get a bounded drain on shutdown; and X-Forwarded-* is
+        # believed only from configured proxies - uvicorn's own default
+        # trusts 127.0.0.1, which is apps/web on a shared host.
+        server_header=False,
+        timeout_graceful_shutdown=settings.shutdown_timeout_seconds,
+        proxy_headers=bool(settings.forwarded_allow_ips),
+        forwarded_allow_ips=settings.forwarded_allow_ips or None,
     )
     return 0
 

@@ -13,6 +13,13 @@ envelope is validated inside the same ``try`` as the reply, so a command the
 contract rejects fails the turn (AGENT_FAILED) and never reaches a
 traceback.
 
+Phase 18 (docs/features/phase-18-production-hardening/plan.md section 4,
+AI-7, AI-8): every turn runs under a deadline, and at most a fixed number
+run at once. Past the deadline the graph is cancelled - no further model or
+tool call starts - and the caller gets 504 AGENT_TIMEOUT. Over capacity, a
+turn is refused before the graph runs, with 503 AGENT_BUSY. Both are logged
+like any other turn, with outcome "timeout" or "busy".
+
 Logged: outcome, duration, lengths, how many tool calls and tool rounds a
 successful turn used (Phase 14 plan.md section 21), how many UI commands it
 returned, and on failure the exception's class name. Never logged: the
@@ -20,6 +27,7 @@ message, the reply, the exception's text or its traceback, since any of them
 can carry the customer's words or model output (ADR-0019, S2).
 """
 
+import asyncio
 import logging
 import time
 import uuid
@@ -30,7 +38,11 @@ from annotated_types import MaxLen
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, ConfigDict, Field
 
-from ai_service.agents.errors import AgentTurnFailedError
+from ai_service.agents.errors import (
+    AgentBusyError,
+    AgentTurnFailedError,
+    AgentTurnTimeoutError,
+)
 from ai_service.agents.graph import RECURSION_LIMIT, AgentGraph
 from ai_service.agents.nodes import tool_calls_requested, tool_rounds
 from ai_service.agents.state import AgentState
@@ -60,17 +72,49 @@ class AgentResult(BaseModel):
     ui_commands: UiCommandBatch | None = None
 
 
+# Settings' defaults (config.py), repeated for callers that build a service
+# directly, such as tests.
+DEFAULT_TURN_TIMEOUT_SECONDS = 20.0
+DEFAULT_MAX_CONCURRENT_TURNS = 16
+
+
 class AgentService:
-    def __init__(self, graph: AgentGraph) -> None:
+    def __init__(
+        self,
+        graph: AgentGraph,
+        turn_timeout_seconds: float = DEFAULT_TURN_TIMEOUT_SECONDS,
+        max_concurrent_turns: int = DEFAULT_MAX_CONCURRENT_TURNS,
+    ) -> None:
         self._graph = graph
+        self._turn_timeout_seconds = turn_timeout_seconds
+        self._max_concurrent_turns = max_concurrent_turns
+        # One event loop per process, and no await between the check and the
+        # increment below, so a plain counter is race-free.
+        self._turns_in_flight = 0
+
+    @property
+    def turns_in_flight(self) -> int:
+        return self._turns_in_flight
 
     async def run_turn(self, message: str) -> AgentResult:
+        if self._turns_in_flight >= self._max_concurrent_turns:
+            _log_refused(message)
+            raise AgentBusyError()
+        self._turns_in_flight += 1
+        try:
+            return await self._run_turn(message)
+        finally:
+            self._turns_in_flight -= 1
+
+    async def _run_turn(self, message: str) -> AgentResult:
         started_at = time.perf_counter()
         state: AgentState = {"messages": [HumanMessage(content=message)]}
+        deadline = asyncio.timeout(self._turn_timeout_seconds)
         try:
-            final = await self._graph.ainvoke(
-                state, config={"recursion_limit": RECURSION_LIMIT}
-            )
+            async with deadline:
+                final = await self._graph.ainvoke(
+                    state, config={"recursion_limit": RECURSION_LIMIT}
+                )
             # Inside the try: a ValidationError here carries the reply as its
             # input, so it must never reach the last-resort handler, which
             # logs a traceback (ADR-0019, S2).
@@ -79,21 +123,26 @@ class AgentService:
             )
             result = AgentResult(reply=final["reply"], ui_commands=batch)
             messages = final["messages"]
-        except Exception as error:
-            # Exception, not BaseException: cancellation (a client going
-            # away, shutdown) must propagate.
+        except TimeoutError as error:
+            # Only this turn's own deadline is a timeout; any other
+            # TimeoutError from inside the graph is an ordinary failure.
+            if not deadline.expired():
+                raise _failed(message, started_at, error) from None
             logger.warning(
-                "agent turn failed",
+                "agent turn timed out",
                 extra={
                     "fields": {
-                        "outcome": "failed",
+                        "outcome": "timeout",
                         "duration_ms": _elapsed_ms(started_at),
                         "message_chars": len(message),
-                        "error_type": type(error).__name__,
                     }
                 },
             )
-            raise AgentTurnFailedError() from None
+            raise AgentTurnTimeoutError() from None
+        except Exception as error:
+            # Exception, not BaseException: cancellation (a client going
+            # away, shutdown) must propagate.
+            raise _failed(message, started_at, error) from None
 
         logger.info(
             "agent turn completed",
@@ -110,6 +159,35 @@ class AgentService:
             },
         )
         return result
+
+
+def _failed(message: str, started_at: float, error: Exception) -> AgentTurnFailedError:
+    """Logs a failed turn and returns the error to raise."""
+    logger.warning(
+        "agent turn failed",
+        extra={
+            "fields": {
+                "outcome": "failed",
+                "duration_ms": _elapsed_ms(started_at),
+                "message_chars": len(message),
+                "error_type": type(error).__name__,
+            }
+        },
+    )
+    return AgentTurnFailedError()
+
+
+def _log_refused(message: str) -> None:
+    logger.warning(
+        "agent turn refused",
+        extra={
+            "fields": {
+                "outcome": "busy",
+                "duration_ms": 0.0,
+                "message_chars": len(message),
+            }
+        },
+    )
 
 
 def _correlation_id() -> str:

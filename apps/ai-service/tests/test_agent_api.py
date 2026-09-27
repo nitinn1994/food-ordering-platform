@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 from typing import Any
@@ -6,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
+from ai_service.agents.service import AgentService
 from ai_service.config import Settings
 from ai_service.llm.simulated import SIMULATED_REPLY
 from ai_service.main import create_app
@@ -173,3 +175,45 @@ def test_failed_turn_logs_no_content_and_no_traceback(
     output = log_stream.getvalue()
     for leaked in (SENTINEL_MESSAGE, MODEL_EXCEPTION_SENTINEL, "Traceback"):
         assert leaked not in output
+
+
+# Deadline and capacity over HTTP (Phase 18, AC11, AC12)
+
+
+def _app_with_service(settings: Settings, service: object) -> TestClient:
+    return TestClient(create_app(settings, agent_service=service))  # type: ignore[arg-type]
+
+
+def test_a_timed_out_turn_is_a_static_504(settings: Settings) -> None:
+    class Slow:
+        async def ainvoke(self, state: Any, config: dict[str, Any]) -> dict[str, Any]:
+            await asyncio.sleep(5)
+            return {"messages": [], "reply": "late"}
+
+    service = AgentService(Slow(), turn_timeout_seconds=0.05)  # type: ignore[arg-type]
+    with _app_with_service(settings, service) as client:
+        response = client.post(PATH, json={"message": SENTINEL_MESSAGE})
+
+    assert response.status_code == 504
+    assert response.json() == {
+        "code": "AGENT_TIMEOUT",
+        "message": "The assistant took too long to answer.",
+    }
+    assert SENTINEL_MESSAGE not in response.text
+
+
+def test_a_turn_over_capacity_is_a_static_503(settings: Settings) -> None:
+    class Unused:
+        async def ainvoke(self, state: Any, config: dict[str, Any]) -> dict[str, Any]:
+            raise AssertionError("the graph must not run")
+
+    service = AgentService(Unused(), max_concurrent_turns=1)  # type: ignore[arg-type]
+    service._turns_in_flight = 1  # as if one turn were already running
+    with _app_with_service(settings, service) as client:
+        response = client.post(PATH, json={"message": "Hello"})
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "code": "AGENT_BUSY",
+        "message": "The assistant is busy. Try again shortly.",
+    }

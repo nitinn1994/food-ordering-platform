@@ -63,4 +63,18 @@ describe("commerce-api application (AC2, AC10, AC11)", () => {
 
     expect(response.headers.get("x-powered-by")).toBeNull();
   });
+
+  // Phase 18 AC10: X-Forwarded-* is trusted only when configured.
+  it("trusts no proxy by default, and the configured hop count otherwise", async () => {
+    const moduleRef = await withInMemoryPersistence(
+      Test.createTestingModule({ imports: [AppModule.forRoot(testConfig())] }),
+    ).compile();
+    const plain = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false });
+    configureApp(plain);
+    expect(plain.getHttpAdapter().getInstance().get("trust proxy")).toBe(false);
+
+    const proxied = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false });
+    configureApp(proxied, { trustProxyHops: 1 });
+    expect(proxied.getHttpAdapter().getInstance().get("trust proxy")).toBe(1);
+  });
 });

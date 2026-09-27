@@ -1,0 +1,27 @@
+# Build context for apps/*/Dockerfile is the repository root (Phase 18,
+# docs/features/phase-18-production-hardening/plan.md §18). Nothing below
+# may reach an image: secrets, local installs, build output, VCS data.
+
+# Secrets and local configuration — never baked into an image (plan.md §7).
+**/.env
+**/.env.*
+
+# Local installs and build output; images install and build their own.
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+
+# Not needed to build or run any app.
+.git
+.claude
+docs
+infrastructure
+**/*.md

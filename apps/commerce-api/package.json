@@ -7,6 +7,8 @@
     "dev": "node --env-file-if-exists=.env ./node_modules/vite-node/vite-node.mjs --watch src/main.ts",
     "build": "vite build",
     "start": "node --env-file-if-exists=.env dist/main.js",
+    "start:migrate": "node --env-file-if-exists=.env dist/migrate.js",
+    "start:seed": "node --env-file-if-exists=.env dist/seed.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

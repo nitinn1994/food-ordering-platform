@@ -4,3 +4,8 @@ packages:
 allowBuilds:
   '@swc/core': true
   esbuild: true
+# Phase 18 (docs/features/phase-18-production-hardening/plan.md §17, OD8):
+# next pins postcss 8.4.31, which carries two HIGH and two moderate
+# advisories (fixed in >=8.5.23). Scoped to next's own postcss only.
+overrides:
+  "next>postcss": ^8.5.23

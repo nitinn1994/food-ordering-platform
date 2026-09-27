@@ -21,10 +21,18 @@ export default defineConfig({
     emptyOutDir: true,
     sourcemap: true,
     rollupOptions: {
-      input: fileURLToPath(new URL("./src/main.ts", import.meta.url)),
+      // The API, plus the two one-shot database commands a production image
+      // runs without devDependencies (Phase 18, plan.md §11, AC24): `node
+      // dist/migrate.js` and `node dist/seed.js --allow-production`.
+      input: {
+        main: fileURLToPath(new URL("./src/main.ts", import.meta.url)),
+        migrate: fileURLToPath(new URL("./src/database/cli/migrate.ts", import.meta.url)),
+        seed: fileURLToPath(new URL("./src/database/cli/seed.ts", import.meta.url)),
+      },
       output: {
         format: "es",
-        entryFileNames: "main.js",
+        entryFileNames: "[name].js",
+        chunkFileNames: "chunks/[name]-[hash].js",
       },
       // packages/contracts/* ship raw TypeScript with no build output of
       // their own (their `exports` field points straight at `./src/index.ts`

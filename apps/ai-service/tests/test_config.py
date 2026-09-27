@@ -49,6 +49,27 @@ def test_reads_every_variable() -> None:
     assert settings.commerce_api_timeout_seconds == 1.5
 
 
+def test_phase_18_defaults_and_overrides() -> None:
+    defaults = load_settings({})
+    assert defaults.agent_turn_timeout_seconds == 20.0
+    assert defaults.agent_max_concurrent_turns == 16
+    assert defaults.forwarded_allow_ips == ""
+    assert defaults.shutdown_timeout_seconds == 25
+
+    settings = load_settings(
+        {
+            "AGENT_TURN_TIMEOUT_SECONDS": "12.5",
+            "AGENT_MAX_CONCURRENT_TURNS": "4",
+            "FORWARDED_ALLOW_IPS": "10.0.0.2",
+            "SHUTDOWN_TIMEOUT_SECONDS": "10",
+        }
+    )
+    assert settings.agent_turn_timeout_seconds == 12.5
+    assert settings.agent_max_concurrent_turns == 4
+    assert settings.forwarded_allow_ips == "10.0.0.2"
+    assert settings.shutdown_timeout_seconds == 10
+
+
 def test_unrelated_environment_variables_are_ignored() -> None:
     settings = load_settings({"PATH": "/usr/bin", "DATABASE_URL": "postgres://x"})
 
@@ -68,6 +89,12 @@ def test_unrelated_environment_variables_are_ignored() -> None:
         ("COMMERCE_API_TIMEOUT_SECONDS", "abc"),
         ("COMMERCE_API_TIMEOUT_SECONDS", "0"),
         ("COMMERCE_API_TIMEOUT_SECONDS", "31"),
+        ("AGENT_TURN_TIMEOUT_SECONDS", "0"),
+        ("AGENT_TURN_TIMEOUT_SECONDS", "121"),
+        ("AGENT_MAX_CONCURRENT_TURNS", "0"),
+        ("AGENT_MAX_CONCURRENT_TURNS", "1001"),
+        ("SHUTDOWN_TIMEOUT_SECONDS", "0"),
+        ("SHUTDOWN_TIMEOUT_SECONDS", "121"),
     ],
 )
 def test_invalid_value_names_the_field(name: str, value: str) -> None:

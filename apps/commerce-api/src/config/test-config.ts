@@ -17,6 +17,9 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     // URL through `overrides` (test/support/test-database.ts).
     DATABASE_URL: "postgres://placeholder@127.0.0.1:1/placeholder",
     DATABASE_POOL_MAX: 10,
+    DATABASE_STATEMENT_TIMEOUT_MS: 10_000,
+    ALLOW_LOOPBACK_DATABASE: false,
+    TRUST_PROXY_HOPS: 0,
     ...overrides,
   });
 }

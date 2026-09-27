@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { ApiError } from "./errors";
 import {
+  AGENT_BUSY_MESSAGE,
+  AGENT_TIMEOUT_MESSAGE,
   GENERIC_REJECTION_MESSAGE,
+  RATE_LIMITED_MESSAGE,
   SERVER_ERROR_MESSAGE,
   UNREACHABLE_MESSAGE,
   userMessageFor,
@@ -79,5 +82,30 @@ describe("userMessageFor — agent", () => {
     expect(userMessageFor(http(413, "PAYLOAD_TOO_LARGE"), "agent")).toBe(
       GENERIC_REJECTION_MESSAGE,
     );
+  });
+});
+
+// Phase 18: the reverse proxy's rate limit and ai-service's capacity and
+// deadline (plan.md §4, §8).
+describe("userMessageFor — Phase 18 limits", () => {
+  it.each(["cart", "order", "agent"] as const)(
+    "429, with or without a contract body → the rate-limit copy (%s)",
+    (context) => {
+      expect(userMessageFor(http(429, "RATE_LIMITED"), context)).toBe(RATE_LIMITED_MESSAGE);
+      expect(userMessageFor(http(429), context)).toBe(RATE_LIMITED_MESSAGE);
+    },
+  );
+
+  it("AGENT_BUSY (503) and AGENT_TIMEOUT (504) have their own agent copy", () => {
+    expect(userMessageFor(http(503, "AGENT_BUSY"), "agent")).toBe(AGENT_BUSY_MESSAGE);
+    expect(userMessageFor(http(504, "AGENT_TIMEOUT"), "agent")).toBe(AGENT_TIMEOUT_MESSAGE);
+  });
+
+  it("agent codes mean nothing outside the agent context", () => {
+    expect(userMessageFor(http(503, "AGENT_BUSY"), "cart")).toBe(SERVER_ERROR_MESSAGE);
+  });
+
+  it("a 504 without the agent code is still a server error", () => {
+    expect(userMessageFor(http(504), "agent")).toBe(SERVER_ERROR_MESSAGE);
   });
 });

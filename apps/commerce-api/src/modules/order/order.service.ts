@@ -7,12 +7,19 @@ import { OrderIdGenerator } from "./domain/order-id.generator";
 import { OrderOwnerResolver } from "./domain/order-owner.resolver";
 import { createOrder, isSameOrderRequest } from "./domain/order.create";
 import {
+  CartEmptyError,
+  CheckoutCartConflictError,
   IdempotencyKeyReusedError,
+  OrderAlreadyExistsError,
   OrderNotFoundError,
 } from "./domain/order.errors";
 import { OrderInvariantViolationError } from "./domain/order.invariants";
 import { OrderRepository } from "./domain/order.repository";
-import type { CustomerDetails, OrderId } from "./domain/order.types";
+import type {
+  CustomerDetails,
+  OrderId,
+  OrderOwnerId,
+} from "./domain/order.types";
 import { toOrderResponse } from "./order.mapper";
 
 // The Order domain's use cases — orchestration only; the rules live in
@@ -59,23 +66,66 @@ export class OrderService {
   // outside, keeping the transaction short. (The in-memory TransactionRunner
   // used by DB-free tests gives no atomicity; there, a failure in step 6
   // still leaves the cart consumed.)
+  //
+  // A lost race is checked against the key once more (Phase 18, plan.md
+  // §9 R-1). The step-2 lookup runs outside the transaction, so a retry
+  // that overlaps its own still-running first attempt misses it, then
+  // loses to that attempt at step 3 (the cart is already empty), step 5
+  // (the cart version moved) or step 6 (the key's unique constraint). If
+  // the winner stored an order under this key, that order is the answer —
+  // the same replay step 2 would have given a moment later — rather than
+  // a 409 or 422 the client's own retry caused.
   async placeOrder(
     idempotencyKey: IdempotencyKey,
     customer: CustomerDetails,
   ): Promise<OrderResponse> {
     const ownerId = await this.orderOwnerResolver.resolve();
 
+    const replay = await this.replayByKey(ownerId, idempotencyKey, customer);
+    if (replay) {
+      return replay;
+    }
+
+    try {
+      return await this.placeNewOrder(ownerId, idempotencyKey, customer);
+    } catch (error) {
+      if (!isLostPlacementRace(error)) {
+        throw error;
+      }
+      const winner = await this.replayByKey(ownerId, idempotencyKey, customer);
+      if (winner) {
+        return winner;
+      }
+      throw error;
+    }
+  }
+
+  // Step 2: the order already stored under this key, if the customer
+  // matches; IDEMPOTENCY_KEY_REUSED if not; undefined if there is none.
+  private async replayByKey(
+    ownerId: OrderOwnerId,
+    idempotencyKey: IdempotencyKey,
+    customer: CustomerDetails,
+  ): Promise<OrderResponse | undefined> {
     const existing = await this.orderRepository.findByIdempotencyKey(
       ownerId,
       idempotencyKey,
     );
-    if (existing) {
-      if (!isSameOrderRequest(existing, customer)) {
-        throw new IdempotencyKeyReusedError();
-      }
-      return toOrderResponse(existing);
+    if (!existing) {
+      return undefined;
     }
+    if (!isSameOrderRequest(existing, customer)) {
+      throw new IdempotencyKeyReusedError();
+    }
+    return toOrderResponse(existing);
+  }
 
+  // Steps 3–6.
+  private async placeNewOrder(
+    ownerId: OrderOwnerId,
+    idempotencyKey: IdempotencyKey,
+    customer: CustomerDetails,
+  ): Promise<OrderResponse> {
     const checkout = await this.checkoutCart.load();
     // Both come from the same identity binding (plan.md §22); a mismatch is
     // a wiring bug, never a client error.
@@ -110,4 +160,15 @@ export class OrderService {
     }
     return toOrderResponse(order);
   }
+}
+
+// The refusals a same-key placement racing its own earlier attempt can
+// meet (placeOrder, above). Anything else is not a race and is never
+// retried as a lookup.
+function isLostPlacementRace(error: unknown): boolean {
+  return (
+    error instanceof CheckoutCartConflictError ||
+    error instanceof CartEmptyError ||
+    error instanceof OrderAlreadyExistsError
+  );
 }

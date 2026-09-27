@@ -42,6 +42,7 @@ made, and what they cost.
 | [0021](#adr-0021--ai-tool-calling-an-allowlisted-tool-registry-one-commerce-api-client-and-generated-contract-models) | AI tool calling: an allowlisted tool registry, one Commerce API client, and generated contract models | Accepted — decision 11 (non-tool-calling simulated model) and the intents part of decision 12 superseded by ADR-0022 |
 | [0022](#adr-0022--ai--ui-commands-presentation-tools-business-intent-validation-and-a-synchronous-turn-to-appsweb) | AI → UI commands: presentation tools, business-intent validation, and a synchronous turn to `apps/web` | Accepted |
 | [0023](#adr-0023--voice-browser-speech-as-an-adapter-on-the-existing-text-turn) | Voice: browser speech as an adapter on the existing text turn | Accepted |
+| [0024](#adr-0024--production-hardening-within-the-existing-architecture) | Production hardening within the existing architecture | Accepted |
 
 ---
 
@@ -2004,3 +2005,122 @@ the interface ADR-0007 warned against.
 - **The speech engines are not exercised in CI.** jsdom has neither API, so
   the adapters are tested against fakes. Their real behaviour is covered by
   the manual checks.
+
+---
+
+## ADR-0024 — Production hardening within the existing architecture
+
+**Status:** Accepted · **Date:** 2026-09-27 (Phase 18) · **Decisions:**
+`docs/features/phase-18-production-hardening/plan.md` §30, OD1–OD15,
+approved as recommended; AC17 amended by the human during implementation
+(opt-in build flag)
+
+### Context
+
+Phases 0–16 built a well-bounded system for local, loopback, single-user
+use. There is no Phase 17. The Phase 18 assessment (`plan.md` §1–§24) found
+three kinds of gap:
+
+- gaps closable inside the current architecture: headers, readiness, limits,
+  configuration rules, an idempotency race, an open proxy bypass;
+- gaps that are deployment artifacts that did not exist: images, a
+  reverse proxy, CI;
+- gaps that need new product capability or an outside party: identity, a
+  real model provider, payments, backups, data retention.
+
+### Decision
+
+1. **Harden; do not redesign.** No new service, broker, cache, datastore,
+   metrics stack or tracing collector. The four boundaries
+   (`system-architecture.md` §4) are unchanged.
+2. **Identity is a release blocker, not part of this phase** (OD1, B1).
+   Every caller still shares one cart and order space
+   (`SingleUserCartOwnerResolver`). The `CartOwnerResolver` port remains
+   the one binding a future identity phase replaces. Until then the
+   deployment must not serve untrusted multi-user traffic.
+3. **Per-client rate limits live at the reverse proxy** (OD2). Services
+   behind web see only web's address. nginx applies them on
+   case-insensitive locations, because web's rewrites match without regard
+   to case. The in-process backstops are ai-service's turn deadline (20 s,
+   504 `AGENT_TIMEOUT`) and concurrency cap (16, 503 `AGENT_BUSY`) (OD13).
+4. **Probes are split.** `GET /health` (liveness) never checks a
+   dependency. commerce-api's `GET /health/ready` requires the database to
+   answer within 1 s. ai-service's is static: a commerce-api or provider
+   outage never takes it out of rotation. web's `GET /api/health` calls no
+   upstream.
+5. **Security headers on every response.**
+   - The APIs send the strictest JSON-only set (CSP `default-src 'none'`,
+     nosniff, no-referrer, no-store).
+   - web sends a static CSP (OD3): `script-src 'self' 'unsafe-inline'`, no
+     other origin, `frame-ancestors 'none'`.
+   - web also sends X-Frame-Options, nosniff, Referrer-Policy, HSTS (in
+     production) and the existing microphone Permissions-Policy.
+6. **Production configuration fails closed.**
+   - commerce-api with `NODE_ENV=production` requires `DATABASE_SSL`, and
+     refuses a loopback database unless `ALLOW_LOOPBACK_DATABASE=true`
+     (OD14).
+   - A web image build with `WEB_REQUIRE_SERVICE_URLS=true` refuses to bake
+     in the 127.0.0.1 service defaults (AC17 as amended). `next build`
+     always runs as production, so `NODE_ENV` cannot mark a production
+     build.
+7. **Order placement replays a lost same-key race.** A retry that overlaps
+   its own first attempt re-checks the idempotency key after losing, and
+   gets the first attempt's order instead of 409 or 422. There is no schema
+   change.
+8. **Migrations are forward-only in production.** `dist/migrate.js` runs
+   once before the API starts, and `down` refuses in production. Rollback
+   means redeploying the previous release against a backward-compatible
+   (expand/contract) schema.
+9. **The reference deployment is one host:** Docker Compose, nginx as the
+   only published service, three non-root app images pinned by digest, and
+   managed PostgreSQL for backups and point-in-time recovery (OD6).
+   - Networks: `edge` joins the proxy and web. `app` joins web, ai-service
+     and commerce-api and is internal. `data` joins commerce-api, migrate and the
+     database. It is routable, so they can reach a managed database off the
+     host.
+   - ai-service has no route to the database. The `AI ↛ DB` rule (§4.1) is
+     therefore structural in this topology, not only enforced by review.
+10. **CI gates; it does not deploy** (OD7). GitHub Actions runs the declared
+    checks, the DB suite, dependency audits (`pnpm audit --audit-level=high`,
+    `pip-audit`) and image builds, with SHA-pinned actions and read-only
+    permissions.
+11. **Measure before optimising** (OD5). The baseline
+    (`docs/operations/performance-baseline.md`) showed no need for batched
+    menu lookups or menu caching, so neither was added.
+12. **Observability stays log-based** (OD10, OD11): structured logs,
+    request and correlation ids, and per-turn and per-tool log lines. There
+    is no metrics endpoint and no external error tracker.
+
+### Rules this sets for later phases
+
+- The identity phase must replace `CartOwnerResolver`'s binding, forward
+  the end user's credential (ADR-0021), and turn web's forwarded headers
+  into an allowlist (Phase 15 S5) before any public multi-user launch.
+- The real-model phase (D2) must:
+  - add a provider timeout and token budget;
+  - add prompt-injection tests;
+  - give ai-service a deliberate egress path (the `app` network is
+    internal);
+  - add an idempotency key to `POST /v1/cart/items` before anything may
+    retry it (OD12, D3).
+- Any new public path must get a rate-limit location in `nginx.conf` that
+  matches case-insensitively.
+- A migration must stay backward-compatible with the previous release;
+  destructive changes need an expand/contract sequence across releases.
+- Dependencies stay pinned by the lockfiles. CI's audits must stay green:
+  fix the finding, or record an accepted risk in the runbook.
+
+### Consequences
+
+- **Positive:** every gap closable within the architecture is closed and
+  verified live: headers, readiness, fail-closed configuration, the S2
+  proxy bypass, rate limits, the idempotency race, non-root images and
+  network isolation. What remains open is written down as named blockers
+  (checklist: `docs/operations/production-readiness-checklist.md`).
+- **Negative:**
+  - The system is still not ready for public multi-user traffic (B1).
+  - Backups depend on the hosting provider and are unverified here.
+  - Rate limits exist only if the nginx proxy is in front.
+  - A web build made outside the Dockerfile without the flag can still
+    fall back to localhost.
+

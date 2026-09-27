@@ -76,9 +76,10 @@ export class IdempotencyKeyReusedError extends DomainError {
 
 // OrderRepository.create found an order with the same id or the same
 // (owner, idempotency key). A plain Error, not a DomainError: OrderService
-// checks the key first and the cart version serializes placements, so
-// reaching this is a bug — a generic 500, logged, never a client-facing code
-// (plan.md §11, §16).
+// checks the key first and the cart version serializes placements. A
+// same-key race that still reaches it is answered by OrderService's second
+// key lookup (Phase 18, R-1); what remains — an id collision — is a bug: a
+// generic 500, logged, never a client-facing code (plan.md §11, §16).
 export class OrderAlreadyExistsError extends Error {
   constructor() {
     super("Order already exists.");

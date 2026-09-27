@@ -55,7 +55,7 @@ same change. A scaffolding phase that leaves this file stale has not finished.
 | Shared packages | `packages/contracts/common`, `ui-commands`, `agent-intents`, `api-contracts` — Zod schemas, all working, each with committed generated JSON Schema. `api-contracts` gained its first producer in Phase 7 (`commerce-api`'s Menu domain) and its first request schemas in Phase 8 (Cart). |
 | Dependency manifests | Root `package.json` + `pnpm-workspace.yaml` (pnpm + Turborepo, ADR-0002); `apps/web/package.json`; `apps/commerce-api/package.json`; one `package.json` per `packages/contracts/*` package. `apps/ai-service/pyproject.toml` + committed `uv.lock` (uv; not a pnpm package — ADR-0019). |
 | Build tooling | Turborepo (`turbo.json`), TypeScript (`tsconfig.base.json`), ESLint flat config (`eslint.config.mjs`, enforcing `apps/web`'s `agent-intents` import restriction — ADR-0012 — and `apps/commerce-api`'s `ui-commands`/`apps/web` import restriction — ADR-0013), Vitest per package. Each contracts package also has a `build` script (`scripts/emit-schema.ts`) that generates its committed JSON Schema; `packages/contracts/tools/` holds a small Node module hook those scripts use, and only they use. `apps/commerce-api`'s own `build` is `vite build` (SSR mode) — a different mechanism, since it produces a runnable service, not a JSON Schema artifact (ADR-0013). |
-| CI | None. `apps/ai-service`'s checks are not part of `turbo run`: they are run separately (below). This is ADR-0002's residual risk, now real. |
+| CI | Since Phase 18: `.github/workflows/ci.yml` (ADR-0024). It runs the TypeScript checks, the DB suite, ai-service's checks, dependency audits and image builds on every pull request and push to `main`, with no deploy step. It was written and reviewed locally; it has not yet run on GitHub. `apps/ai-service`'s checks are still not part of `turbo run`: run them separately (below). |
 | Git | Repository initialised; commits exist (this file is touched on every phase, this line just tracked reality late — see Phase 7's follow-up notes). |
 
 ## Prerequisites
@@ -174,10 +174,11 @@ was last verified on 2026-09-26 (Phase 14); Phase 15 added no dependency.
 | Task | Command | Status |
 | ---- | ------- | ------ |
 | Install | `uv sync` (`uv sync --locked` proves `uv.lock` is current) | Verified. It also rebuilds from a deleted `.venv`. |
-| Test | `uv run pytest` | Verified: 760 passed, 2 skipped (the live check below), up from 611 before Phase 15. Needs no `.env`, no API key, no commerce-api, no database and no network: commerce-api is a fake on httpx's `MockTransport`. No model provider is called: the agent runs on simulated and scripted models. |
+| Test | `uv run pytest` | Verified: 788 passed, 2 skipped (the live check below), after Phase 18; 760 after Phase 15. Needs no `.env`, no API key, no commerce-api, no database and no network: commerce-api is a fake on httpx's `MockTransport`. No model provider is called: the agent runs on simulated and scripted models. |
 | Lint | `uv run ruff check .` | Verified |
 | Format check | `uv run ruff format --check .` | Verified |
 | Type check | `uv run mypy` | Verified (strict, service and tests) |
+| Dependency vulnerability audit | `uv run pip-audit` | Verified 2026-09-27 (Phase 18): no known vulnerabilities. Needs network access to the vulnerability database. |
 | Run in development | `uv run python -m ai_service --reload` | Verified. Serves on http://127.0.0.1:3002 (loopback only). `GET /health` returns `200 {"status":"ok"}`. `/docs` and `/openapi.json` are served only when `APP_ENV=development` (the default). |
 | Run | `uv run python -m ai_service` | Verified. No `.env` needed, since every setting has a default. An invalid value (for example `PORT=abc`) exits 1, naming the variable, not the value. So does switching LangSmith tracing on (`LANGSMITH_TRACING=true`, or any of the other tracing variables in `.env.example`). `POST /v1/agent/turns` with `{"message":"Hello"}` returns the simulated reply; `{"message":"show me the desserts"}` also returns a `uiCommands` batch (Phase 15). |
 | Run with a `.env` | `uv run --env-file .env python -m ai_service` | Verified form. Copy `.env.example` first: uv refuses `--env-file` when the file is missing. |
@@ -206,6 +207,32 @@ input**, allow the microphone, and say "show me the desserts". Firefox has no
 speech recognition and shows a "type instead" hint. Voice turns go through
 the same `/api/ai/v1/agent/turns` as typed ones, so ai-service must be
 running for a reply.
+
+### Production images, reference stack and CI (Phase 18)
+
+Run from the repository root. Operating a deployment (environment
+variables, TLS, migrations, rollback, backups, incidents) is covered in
+`docs/operations/production-runbook.md`. The table below is only about
+building and checking.
+
+| Task | Command | Status |
+| ---- | ------- | ------ |
+| Build the commerce-api image | `docker build -f apps/commerce-api/Dockerfile -t commerce-api .` | Verified 2026-09-27 |
+| Build the ai-service image | `docker build -f apps/ai-service/Dockerfile -t ai-service .` | Verified |
+| Build the web image | `docker build -f apps/web/Dockerfile --build-arg COMMERCE_API_URL=http://commerce-api:3001 --build-arg AI_SERVICE_URL=http://ai-service:3002 -t web .` | Verified. Without both build args the build fails by design (`WEB_REQUIRE_SERVICE_URLS=true`). |
+| Validate the production compose file | `docker compose -f infrastructure/docker/compose.prod.yaml config -q` | Verified. It needs `DATABASE_URL`, `DATABASE_SSL` and `TLS_CERT_DIR` set, and refuses otherwise. |
+| Run migrations from a build | `pnpm --filter commerce-api build && pnpm --filter commerce-api start:migrate` | Verified. `down` refuses with `NODE_ENV=production`. |
+| Load the menu from a build | `pnpm --filter commerce-api start:seed` (add `-- --allow-production` in production) | Verified |
+| npm vulnerability audit | `pnpm audit --audit-level=high` | Verified: 0 high or critical. 2 moderate (vitest, dev-only) are a recorded follow-up. |
+
+Two web build notes (Phase 18):
+
+- `apps/web`'s `next build` now produces standalone output. `pnpm --filter
+  web start` still works but logs a warning. The image runs `node
+  apps/web/server.js`.
+- A local `next start` needs `COMMERCE_API_URL` and `AI_SERVICE_URL` set.
+  Without `COMMERCE_API_URL` the menu page renders its error state, with
+  HTTP 200.
 
 `NOT_CONFIGURED` means the project has no such check set up. It does not mean
 passing, and it does not mean failing. See `.claude/rules/validation.md` for

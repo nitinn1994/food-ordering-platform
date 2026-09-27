@@ -1,42 +1,53 @@
 import type { NextConfig } from "next";
+import { resolveServiceUrl, securityHeaders } from "./src/lib/security/headers";
 
 // commerce-api's development default — the same value as
 // DEV_COMMERCE_API_URL in src/lib/api/config.ts, repeated as a literal
 // because next.config.ts is loaded by Next's own config loader, which does
-// not reliably resolve this app's ESM TypeScript modules.
+// not reliably resolve this app's ESM TypeScript modules (the one module it
+// does import, src/lib/security/headers.ts, has no imports of its own).
 //
 // Unlike config.ts, this falls back even under NODE_ENV=production: rewrites
 // are evaluated when `next build` runs, and the repository's build must
 // succeed without a commerce-api URL configured. A production build must set
 // COMMERCE_API_URL at build time (docs/features/phase-11-web-commerce-
-// integration/plan.md §14).
+// integration/plan.md §14); the production image build enforces that with
+// WEB_REQUIRE_SERVICE_URLS=true (Phase 18, resolveServiceUrl).
 const DEV_COMMERCE_API_URL = "http://127.0.0.1:3001";
 
-const commerceApiUrl = (
-  process.env.COMMERCE_API_URL?.trim() || DEV_COMMERCE_API_URL
-).replace(/\/+$/, "");
-
 // ai-service's development default — DEV_AI_SERVICE_URL in
-// src/lib/api/config.ts, repeated for the same reason. The same build-time
-// rule as COMMERCE_API_URL: a production build must set AI_SERVICE_URL
-// (docs/features/phase-15-ai-ui-commands/plan.md §14).
+// src/lib/api/config.ts, repeated for the same reason, under the same
+// build-time rule (docs/features/phase-15-ai-ui-commands/plan.md §14).
 const DEV_AI_SERVICE_URL = "http://127.0.0.1:3002";
 
-const aiServiceUrl = (
-  process.env.AI_SERVICE_URL?.trim() || DEV_AI_SERVICE_URL
-).replace(/\/+$/, "");
+const commerceApiUrl = resolveServiceUrl(
+  "COMMERCE_API_URL",
+  DEV_COMMERCE_API_URL,
+  process.env,
+);
+const aiServiceUrl = resolveServiceUrl(
+  "AI_SERVICE_URL",
+  DEV_AI_SERVICE_URL,
+  process.env,
+);
+
+const isProduction = process.env.NODE_ENV === "production";
 
 const nextConfig: NextConfig = {
-  // Only this origin may use the microphone — never an embedded frame
-  // (docs/features/phase-16-voice-interaction/review-report.md finding 5c).
-  // Voice input asks for it only on the customer's press (ADR-0023); this
-  // stops any third-party frame the page might one day embed from asking at
-  // all. Every route, so the header is present wherever voice can render.
+  // Don't advertise the framework (commerce-api does the same).
+  poweredByHeader: false,
+  // A self-contained server (`.next/standalone/.../server.js`) that honours
+  // HOSTNAME and PORT, for the production image (Phase 18, plan.md §15).
+  // `next start` keeps working for local use.
+  output: "standalone",
+  // Security headers on every route (Phase 18, plan.md §3 S-1, OD3) — see
+  // src/lib/security/headers.ts. They include the Permissions-Policy that
+  // limits the microphone to this origin (Phase 16).
   async headers() {
     return [
       {
         source: "/:path*",
-        headers: [{ key: "Permissions-Policy", value: "microphone=(self)" }],
+        headers: [...securityHeaders(isProduction)],
       },
     ];
   },

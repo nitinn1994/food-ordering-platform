@@ -1,8 +1,14 @@
 // `pnpm --filter commerce-api db:migrate` (to latest) and
-// `db:migrate:down` (revert the most recent) — development only
+// `db:migrate:down` (revert the most recent)
 // (docs/features/phase-10-database-persistence/plan.md §10, §16). Reads the
 // same validated configuration as the API (DATABASE_URL from .env), and
 // never prints the connection string.
+//
+// Since Phase 18 it is also built to dist/migrate.js, which a production
+// image runs once before the API starts (`pnpm start:migrate`). Production
+// migrations are forward-only (plan.md §11): "down" refuses to run with
+// NODE_ENV=production — rollback means redeploying the previous release
+// against a backward-compatible schema, never dropping tables.
 import { EnvValidationError, parseEnv } from "../../config/env.schema";
 import { createDatabase } from "../database-client";
 import { migrate } from "../migrator";
@@ -19,6 +25,11 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     throw error;
+  }
+
+  if (direction === "down" && config.NODE_ENV === "production") {
+    console.error("Migrations are forward-only in production; refusing to run down.");
+    process.exit(1);
   }
 
   const db = createDatabase(config);

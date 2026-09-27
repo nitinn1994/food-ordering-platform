@@ -1,0 +1,160 @@
+# Production reference topology (Phase 18, docs/features/phase-18-production-
+# hardening/plan.md §15, §26, AC26; runbook: docs/operations/production-
+# runbook.md). One host, one container per app, nginx as the only published
+# service. Nothing here is deployed by the repository.
+#
+#   docker compose -f infrastructure/docker/compose.prod.yaml build
+#   docker compose -f infrastructure/docker/compose.prod.yaml up -d --wait
+#
+# Required from the environment (the host's secret store, or an env file
+# kept outside the repository with 0600 permissions, passed with
+# `--env-file`): DATABASE_URL and DATABASE_SSL. TLS_CERT_DIR names a
+# directory holding fullchain.pem and privkey.pem. Compose refuses to start
+# if a required value is missing.
+#
+# The database is managed PostgreSQL (backups and point-in-time recovery come
+# from the provider; plan.md §19). The `local-db` profile adds a throwaway
+# PostgreSQL for smoke-testing this file only — never for real data.
+name: food-ordering-platform-prod
+
+x-hardened: &hardened
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs:
+    - /tmp:size=16m
+
+services:
+  proxy:
+    <<: *hardened
+    image: nginx:1.28.3-alpine@sha256:a8b39bd9cf0f83869a2162827a0caf6137ddf759d50a171451b335cecc87d236
+    # nginx's master drops to its worker user and binds 80/443; nothing else.
+    cap_add: [CHOWN, SETGID, SETUID, NET_BIND_SERVICE]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      NGINX_ENTRYPOINT_QUIET_LOGS: "1"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${TLS_CERT_DIR:?set TLS_CERT_DIR to the directory holding fullchain.pem and privkey.pem}:/etc/nginx/certs:ro
+    tmpfs:
+      - /tmp:size=16m
+      - /var/cache/nginx:size=64m
+      - /var/run/nginx:size=1m
+      # The image's entrypoint rewrites its default server config at start.
+      - /etc/nginx/conf.d:size=1m
+    networks: [edge]
+    depends_on:
+      web:
+        condition: service_healthy
+
+  web:
+    <<: *hardened
+    image: food-ordering-platform/web:${RELEASE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+      args:
+        # The addresses web uses on the private `app` network; fixed into the
+        # build's rewrites (apps/web/Dockerfile).
+        COMMERCE_API_URL: http://commerce-api:3001
+        AI_SERVICE_URL: http://ai-service:3002
+    environment:
+      # Read again at runtime by Server Components (src/lib/api/config.ts).
+      COMMERCE_API_URL: http://commerce-api:3001
+      AI_SERVICE_URL: http://ai-service:3002
+    tmpfs:
+      - /tmp:size=16m
+      - /app/apps/web/.next/cache:uid=1000,gid=1000,size=64m
+    networks: [edge, app]
+    depends_on:
+      commerce-api:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+
+  ai-service:
+    <<: *hardened
+    image: food-ordering-platform/ai-service:${RELEASE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: apps/ai-service/Dockerfile
+    environment:
+      COMMERCE_API_URL: http://commerce-api:3001
+      LOG_LEVEL: ${AI_LOG_LEVEL:-INFO}
+      AGENT_TURN_TIMEOUT_SECONDS: ${AGENT_TURN_TIMEOUT_SECONDS:-20}
+      AGENT_MAX_CONCURRENT_TURNS: ${AGENT_MAX_CONCURRENT_TURNS:-16}
+    # Only the `app` network: ai-service has no route to the database
+    # network at all (system-architecture.md §4.1, §8.2).
+    networks: [app]
+    depends_on:
+      commerce-api:
+        condition: service_healthy
+    stop_grace_period: 30s
+
+  commerce-api:
+    <<: *hardened
+    image: food-ordering-platform/commerce-api:${RELEASE_TAG:-latest}
+    build:
+      context: ../..
+      dockerfile: apps/commerce-api/Dockerfile
+    environment: &commerce-env
+      DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL (from the secret store)}
+      DATABASE_SSL: ${DATABASE_SSL:?set DATABASE_SSL (verify-full for a managed database)}
+      DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-10}
+      LOG_LEVEL: ${COMMERCE_LOG_LEVEL:-log}
+    networks: [app, data]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    stop_grace_period: 30s
+
+  # Runs the forward-only migrations once, before commerce-api starts
+  # (plan.md §11). A failure stops the rollout: commerce-api never starts.
+  migrate:
+    <<: *hardened
+    image: food-ordering-platform/commerce-api:${RELEASE_TAG:-latest}
+    command: ["node", "dist/migrate.js"]
+    restart: "no"
+    environment: *commerce-env
+    networks: [data]
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+
+  # Smoke-testing only (`--profile local-db`); production uses managed
+  # PostgreSQL. Throwaway credentials, no published port.
+  postgres:
+    profiles: [local-db]
+    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: commerce
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:-smoke-test-only}
+      POSTGRES_DB: commerce
+    volumes:
+      - smoke-pgdata:/var/lib/postgresql
+    networks: [data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U commerce -d commerce"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+networks:
+  # proxy <-> web
+  edge: {}
+  # web <-> ai-service <-> commerce-api; not reachable from outside the host.
+  app:
+    internal: true
+  # commerce-api and migrate <-> database. Not internal: the database is
+  # managed PostgreSQL outside this host, and an internal network has no
+  # route off it (Phase 18 security review S1). ai-service is not on this
+  # network, so it still has no route to the database or the internet.
+  data: {}
+
+volumes:
+  smoke-pgdata: {}

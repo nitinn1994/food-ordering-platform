@@ -1,6 +1,6 @@
 # ai-service HTTP API
 
-**Status:** Phase 15. Routes: `GET /health` and `POST /v1/agent/turns`
+**Status:** Phase 18. Routes: `GET /health`, `GET /health/ready` and `POST /v1/agent/turns`
 (a LangGraph agent on a simulated model, with five Commerce API tools and
 five presentation tools that return UI commands to `apps/web`).
 **Source of truth:** `apps/ai-service/ai_service/` (the app is wired in
@@ -34,6 +34,7 @@ Business routes live under `/v1/...`, like commerce-api, not under
 | Method | Path | Response |
 | --- | --- | --- |
 | GET | `/health` | `200 {"status":"ok"}` |
+| GET | `/health/ready` | `200 {"status":"ready"}` (Phase 18, §8) |
 | POST | `/v1/agent/turns` | `200 {"reply": "...", "uiCommands"?: {...}}` (§3.1) |
 | GET | `/docs`, `/redoc`, `/openapi.json` | Generated API docs. Served **only when `APP_ENV=development`**. Otherwise `404 ROUTE_NOT_FOUND`. |
 
@@ -121,6 +122,8 @@ never states a price. commerce-api decides whether an item exists.
 | 405 | `METHOD_NOT_ALLOWED` | Any method but `POST`. |
 | 413 | `PAYLOAD_TOO_LARGE` | The body is over 16 KB (§5.1). |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | The body is not `application/json` (§5.1). |
+| 503 | `AGENT_BUSY` | Phase 18: `AGENT_MAX_CONCURRENT_TURNS` turns (default 16) are already running in this process. Refused before the agent runs, so nothing changed. Body: `{"code":"AGENT_BUSY","message":"The assistant is busy. Try again shortly."}`. |
+| 504 | `AGENT_TIMEOUT` | Phase 18: the turn ran past `AGENT_TURN_TIMEOUT_SECONDS` (default 20) and was cancelled. No model or tool call starts after the deadline, but a cart write already sent may have landed; `apps/web` re-reads the cart after every turn. Body: `{"code":"AGENT_TIMEOUT","message":"The assistant took too long to answer."}`. |
 | 500 | `AGENT_FAILED` | The agent could not produce a reply: the model or a graph step failed, the result (reply or UI command batch) failed validation, the model was still asking for tools after the round limit, or one model message asked for more than 16 tool calls (§3.2). The body is always `{"code":"AGENT_FAILED","message":"The assistant could not process this message."}`, never `uiCommands`. Cart changes made by tools earlier in the turn stay applied: commerce-api is the truth, and `apps/web` re-reads the cart after every turn. |
 
 A tool failure (commerce-api down, an unavailable item, a bad argument) is
@@ -263,6 +266,8 @@ Every error body is tested against the committed
 | 413 | `PAYLOAD_TOO_LARGE` | The request body is over 16 KB (§5.1). |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | The request has a body that is not `application/json` (§5.1). |
 | 500 | `AGENT_FAILED` | `POST /v1/agent/turns` only: the agent failed (§3.1). Only the exception's class name is logged, never its text or traceback. |
+| 503 | `AGENT_BUSY` | `POST /v1/agent/turns` only: over the concurrency cap (§3.1). |
+| 504 | `AGENT_TIMEOUT` | `POST /v1/agent/turns` only: past the turn deadline (§3.1). |
 | 500 | `INTERNAL_ERROR` | Anything unexpected. The body is always `{"code":"INTERNAL_ERROR","message":"Internal server error."}`. The detail is logged server-side with the request id. |
 
 ### 5.1 Request bodies
@@ -274,7 +279,7 @@ fine), or it is rejected with 415 before anything reads it. A body over
 16 KB (16,384 bytes) is rejected with 413, whether it declares its length or
 streams without one. Both responses carry the correlation headers (§6).
 
-Further service-specific codes (a commerce-api outage, a model timeout, a
+Further service-specific codes (a model provider's own timeout or outage, a
 resource not found) arrive with the phase that can raise them, as
 `AiServiceError` subclasses carrying their own code. A route must not use a bare
 `HTTPException(404)` for "resource not found", because that maps to
@@ -293,6 +298,14 @@ Both are on **every** response, including 400, 404, 405 and 500. The 500
 case is handled deliberately: the request-context middleware sends that
 response itself, because Starlette's own 500 would bypass it.
 
+Since Phase 18 every response also carries the same security headers as
+commerce-api (`commerce-api.md` §7): `Content-Security-Policy: default-src
+'none'; frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: no-referrer` and `Cache-Control: no-store`. They come from
+`core/security_headers.py`, the outermost middleware, so they are on the
+last-resort 500 too. The development-only `/docs` and `/redoc` omit the CSP,
+because they need scripts. uvicorn sends no `server` header.
+
 ## 7. Logging
 
 One JSON object per line on stdout, with `timestamp`, `level`, `logger`,
@@ -308,6 +321,8 @@ Each agent turn adds one line from the `ai_service.agent` logger:
 | --- | --- | --- |
 | `agent turn completed` | INFO | `outcome: "ok"`, `duration_ms`, `message_chars`, `reply_chars`, `tool_calls`, `tool_rounds`, `ui_commands` (how many were returned) |
 | `agent turn failed` | WARNING | `outcome: "failed"`, `duration_ms`, `message_chars`, `error_type` (the exception's class name) |
+| `agent turn timed out` | WARNING | `outcome: "timeout"`, `duration_ms`, `message_chars` (Phase 18) |
+| `agent turn refused` | WARNING | `outcome: "busy"`, `duration_ms: 0`, `message_chars` (Phase 18) |
 
 Each tool call adds one line from the `ai_service.tools` logger: `tool call
 completed` or `tool call failed`, with `tool`, `category`
@@ -334,8 +349,16 @@ LangSmith/LangChain tracing variable is switched on (`.env.example`).
 `GET /health` checks liveness only: it answers if the process is up. It has
 no dependency check, and it will never depend on a model provider or on
 commerce-api. Since Phase 14 the service has a commerce-api client, but it
-connects only when a tool runs. There is no readiness endpoint, because there is nothing to be
-ready for yet (ADR-0019).
+connects only when a tool runs.
+
+`GET /health/ready` (Phase 18) answers `200 {"status":"ready"}` once the
+process is serving. It deliberately checks no dependency (ADR-0024
+decision 4):
+
+- With commerce-api down, a turn still answers: its tools report the outage
+  to the model, and the reply says so. Taking ai-service out of rotation
+  would help no one.
+- A model provider's outage is never a reason to drain or restart it.
 
 ## 9. Not covered
 

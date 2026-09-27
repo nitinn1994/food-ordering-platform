@@ -16,6 +16,12 @@ export function middleware(request: NextRequest): NextResponse {
   return NextResponse.next();
 }
 
+// Case-insensitive, like the rewrite it guards (Phase 15 security review
+// S2): Next matches rewrite sources without regard to case, but a plain
+// matcher string only in the case written, so `/API/COMMERCE/v1/../health`
+// used to skip this middleware and be forwarded to commerce-api's /health.
+// ASCII classes, not a regex flag: Next's matcher takes no flags.
 export const config = {
-  matcher: "/api/commerce/:path*",
+  matcher:
+    "/:api([aA][pP][iI])/:commerce([cC][oO][mM][mM][eE][rR][cC][eE])/:path*",
 };

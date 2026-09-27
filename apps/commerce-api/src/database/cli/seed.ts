@@ -1,8 +1,14 @@
 // `pnpm --filter commerce-api db:seed` — loads the menu seed into the
-// database DATABASE_URL names (.env). Development only
-// (docs/features/phase-10-database-persistence/plan.md §11): it refuses to
-// run with NODE_ENV=production, and never prints the connection string.
-// Run `db:migrate` first.
+// database DATABASE_URL names (.env), and never prints the connection
+// string. Run `db:migrate` first.
+//
+// With NODE_ENV=production it refuses to run unless given
+// --allow-production (docs/features/phase-10-database-persistence/plan.md
+// §11; Phase 18 OD14): there is no other production menu-loading path yet
+// (plan.md §22 D4), so an operator loads the menu with this one-shot, on
+// purpose, from the built dist/seed.js. The seed is an upsert of the
+// in-code menu: re-running it restores the seeded rows' names, prices and
+// availability.
 import { EnvValidationError, parseEnv } from "../../config/env.schema";
 import { createDatabase } from "../database-client";
 import { seedMenu } from "../menu-seed";
@@ -20,8 +26,10 @@ async function main(): Promise<void> {
     throw error;
   }
 
-  if (config.NODE_ENV === "production") {
-    console.error("db:seed is for development and test databases only; refusing to run.");
+  if (config.NODE_ENV === "production" && !process.argv.includes("--allow-production")) {
+    console.error(
+      "db:seed would overwrite the production menu; refusing to run without --allow-production.",
+    );
     process.exit(1);
   }
 

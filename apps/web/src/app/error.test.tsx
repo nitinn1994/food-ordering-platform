@@ -15,7 +15,7 @@ describe("Error — AC8, Phase 11 AC3", () => {
   it("renders a static, friendly message and does not crash", () => {
     render(<ErrorPage error={new Error("network down")} reset={() => {}} />);
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "We couldn't load the menu right now. Please try again.",
+      "We couldn't load this page right now. Please try again.",
     );
   });
 

@@ -30,6 +30,10 @@ const DATABASE_FREE_CLIENT = {
   transaction(): never {
     throw new Error("No database in the DB-free test suite.");
   },
+  // Readiness (Phase 18): there is no database, so the app is never ready.
+  async ping(): Promise<boolean> {
+    return false;
+  },
 };
 
 export function withInMemoryPersistence(

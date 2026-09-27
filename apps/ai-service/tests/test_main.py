@@ -31,6 +31,10 @@ def uvicorn_calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         "LOG_FORMAT",
         "COMMERCE_API_URL",
         "COMMERCE_API_TIMEOUT_SECONDS",
+        "AGENT_TURN_TIMEOUT_SECONDS",
+        "AGENT_MAX_CONCURRENT_TURNS",
+        "FORWARDED_ALLOW_IPS",
+        "SHUTDOWN_TIMEOUT_SECONDS",
     ):
         monkeypatch.delenv(name, raising=False)
     # The developer's shell must not decide the outcome (tracing guard).
@@ -82,8 +86,36 @@ def test_valid_environment_starts_uvicorn_with_the_settings(
             "reload": False,
             "access_log": False,
             "log_config": None,
+            "server_header": False,
+            "timeout_graceful_shutdown": 25,
+            "proxy_headers": False,
+            "forwarded_allow_ips": None,
         }
     ]
+
+
+def test_forwarded_headers_are_trusted_only_from_configured_proxies(
+    uvicorn_calls: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FORWARDED_ALLOW_IPS", "10.0.0.2")
+    monkeypatch.setenv("SHUTDOWN_TIMEOUT_SECONDS", "7")
+
+    assert entry.main([]) == 0
+    assert uvicorn_calls[0]["proxy_headers"] is True
+    assert uvicorn_calls[0]["forwarded_allow_ips"] == "10.0.0.2"
+    assert uvicorn_calls[0]["timeout_graceful_shutdown"] == 7
+
+
+def test_the_default_app_applies_the_turn_limits() -> None:
+    app = create_app(
+        Settings(
+            app_env="test", agent_turn_timeout_seconds=3, agent_max_concurrent_turns=2
+        )
+    )
+    service = app.state.agent_service
+
+    assert service._turn_timeout_seconds == 3
+    assert service._max_concurrent_turns == 2
 
 
 def test_reload_flag_is_passed_through(

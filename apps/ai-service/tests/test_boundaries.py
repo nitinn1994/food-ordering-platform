@@ -52,7 +52,15 @@ ALLOWED_RUNTIME = {
     "langchain-core",
     "httpx",
 }
-ALLOWED_DEV = {"pytest", "jsonschema", "ruff", "mypy", "datamodel-code-generator"}
+ALLOWED_DEV = {
+    "pytest",
+    "jsonschema",
+    "ruff",
+    "mypy",
+    "datamodel-code-generator",
+    # Dependency vulnerability audit (Phase 18 plan.md section 17, OD9).
+    "pip-audit",
+}
 
 # Modules the service package must never import. A plain entry matches that
 # module and its submodules ("langgraph.prebuilt" matches

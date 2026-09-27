@@ -10,6 +10,11 @@ import { BROWSER_API_BASE } from "./config";
 // middleware.ts calls this first and answers 404 for anything that is not
 // plainly inside /v1: every segment, once decoded, must be neither "." nor
 // ".." nor contain a path separator.
+//
+// The prefix is compared case-insensitively (Phase 15 security review S2,
+// closed in Phase 18): next.config.ts's rewrite matches its source without
+// regard to case, so `/API/COMMERCE/v1/../health` is forwarded exactly like
+// the lowercase path, and must be judged exactly like it.
 
 const PROXY_V1_PREFIX = `${BROWSER_API_BASE}/v1/`;
 
@@ -23,7 +28,7 @@ function decodeSegment(segment: string): string | null {
 }
 
 export function isForwardableProxyPath(pathname: string): boolean {
-  if (!pathname.startsWith(PROXY_V1_PREFIX)) {
+  if (pathname.slice(0, PROXY_V1_PREFIX.length).toLowerCase() !== PROXY_V1_PREFIX) {
     return false;
   }
   const rest = pathname.slice(PROXY_V1_PREFIX.length);

@@ -9,6 +9,7 @@ import {
   JSON_BODY_LIMIT,
   JsonContentTypeGuardMiddleware,
 } from "./common/http/json-body.middleware";
+import { SecurityHeadersMiddleware } from "./common/http/security-headers.middleware";
 import { RequestLogMiddleware } from "./common/logging/request-log.middleware";
 import { RequestContextMiddleware } from "./common/request-context/request-context.middleware";
 import { validationExceptionFactory } from "./common/validation/validation";
@@ -33,22 +34,44 @@ import { validationExceptionFactory } from "./common/validation/validation";
 // createNestApplication() themselves — an option to that call, not
 // something this function (which only ever receives an already-created
 // app) can retroactively change.
-export function configureApp(app: NestExpressApplication): void {
+export interface ConfigureAppOptions {
+  // TRUST_PROXY_HOPS (env.schema.ts); 0 trusts no X-Forwarded-* header.
+  readonly trustProxyHops?: number;
+}
+
+export function configureApp(
+  app: NestExpressApplication,
+  options: ConfigureAppOptions = {},
+): void {
   // Don't advertise the framework (plan.md's "Conventions established"
   // table). Express's own default `X-Powered-By: Express` header is the
   // one piece of that table this function didn't apply until this was
   // caught in review.
   app.disable("x-powered-by");
 
+  // Express trusts X-Forwarded-* only from this many proxy hops (Phase 18,
+  // plan.md AC10). Off by default: behind no proxy, the header is
+  // client-controlled.
+  const trustProxyHops = options.trustProxyHops ?? 0;
+  if (trustProxyHops > 0) {
+    app.set("trust proxy", trustProxyHops);
+  }
+
   // Business routes are served under /v1; a controller opts out with
   // `@Controller({ version: VERSION_NEUTRAL })` (health.controller.ts is
   // the one example so far) — requirements.md AC10.
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: "1" });
 
+  const securityHeadersMiddleware = new SecurityHeadersMiddleware();
   const requestContextMiddleware = new RequestContextMiddleware();
   const jsonContentTypeGuardMiddleware = new JsonContentTypeGuardMiddleware();
   const requestLogMiddleware = new RequestLogMiddleware();
 
+  // 0. Security headers first, so every response carries them — even a
+  //    rejection by any middleware below (Phase 18, plan.md AC5).
+  app.use((req: Request, res: Response, next: NextFunction) =>
+    securityHeadersMiddleware.use(req, res, next),
+  );
   // 1. Establish ids and response headers before anything below can
   //    reject the request — including the body parser rejecting an
   //    oversized body.

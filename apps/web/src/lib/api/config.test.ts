@@ -57,12 +57,44 @@ describe("next.config headers", () => {
 
     const headers = await nextConfig.headers?.();
 
-    expect(headers).toEqual([
-      {
-        source: "/:path*",
-        headers: [{ key: "Permissions-Policy", value: "microphone=(self)" }],
-      },
+    expect(headers).toHaveLength(1);
+    expect(headers?.[0]?.source).toBe("/:path*");
+    expect(headers?.[0]?.headers).toContainEqual({
+      key: "Permissions-Policy",
+      value: "microphone=(self)",
+    });
+  });
+
+  // Phase 18 (plan.md §3 S-1, S-5; AC16): the full security set from
+  // src/lib/security/headers.ts, for this build's NODE_ENV, on every route.
+  it("sends the security headers on every route and hides the framework", async () => {
+    vi.resetModules();
+    const { default: nextConfig } = await import("../../../next.config");
+    const { securityHeaders } = await import("../security/headers");
+
+    const headers = await nextConfig.headers?.();
+
+    expect(headers?.[0]?.headers).toEqual([
+      ...securityHeaders(process.env.NODE_ENV === "production"),
     ]);
+    expect(nextConfig.poweredByHeader).toBe(false);
+    expect(nextConfig.output).toBe("standalone");
+  });
+
+  // AC17 as amended: the production image build sets the flag, and a
+  // missing service URL then fails the build at config load.
+  it("refuses to load without service URLs when WEB_REQUIRE_SERVICE_URLS=true", async () => {
+    vi.resetModules();
+    vi.stubEnv("WEB_REQUIRE_SERVICE_URLS", "true");
+    vi.stubEnv("COMMERCE_API_URL", "");
+    vi.stubEnv("AI_SERVICE_URL", "");
+    try {
+      await expect(import("../../../next.config")).rejects.toThrow(
+        "COMMERCE_API_URL must be set when WEB_REQUIRE_SERVICE_URLS=true",
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
 

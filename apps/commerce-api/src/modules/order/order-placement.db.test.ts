@@ -175,44 +175,71 @@ describe("order placement on PostgreSQL", () => {
     // (the same technique as order.service.test.ts's in-memory version);
     // everything after load() is the real adapter, service, repositories and
     // transaction.
-    it.each([
-      ["different keys", "key-1", "key-2"],
-      ["the same key", "key-1", "key-1"],
-    ])(
-      "yields exactly one order for two placements priced from one cart version, with %s",
-      async (_label, a, b) => {
-        await moduleRef.close();
-        const barrier = { loads: 0, release: () => {} };
-        const bothLoaded = new Promise<void>((resolve) => (barrier.release = resolve));
-        class BarrierCheckoutCart extends CartCheckoutAdapter {
-          override async load() {
-            const snapshot = await super.load();
-            barrier.loads += 1;
-            if (barrier.loads === 2) {
-              barrier.release();
-            }
-            await bothLoaded;
-            return snapshot;
+    async function startBarrierModule() {
+      await moduleRef.close();
+      const barrier = { loads: 0, release: () => {} };
+      const bothLoaded = new Promise<void>((resolve) => (barrier.release = resolve));
+      class BarrierCheckoutCart extends CartCheckoutAdapter {
+        override async load() {
+          const snapshot = await super.load();
+          barrier.loads += 1;
+          if (barrier.loads === 2) {
+            barrier.release();
           }
+          await bothLoaded;
+          return snapshot;
         }
-        moduleRef = await startModule((cartService) => new BarrierCheckoutCart(cartService));
-        orders = moduleRef.get(OrderService);
-        cart = moduleRef.get(CartService);
-        await cart.addItem("tiramisu", 2);
+      }
+      moduleRef = await startModule((cartService) => new BarrierCheckoutCart(cartService));
+      orders = moduleRef.get(OrderService);
+      cart = moduleRef.get(CartService);
+      await cart.addItem("tiramisu", 2);
+      return barrier;
+    }
 
-        const results = await Promise.allSettled([
-          orders.placeOrder(a, CUSTOMER),
-          orders.placeOrder(b, CUSTOMER),
-        ]);
+    it("yields exactly one order for two placements priced from one cart version, with different keys", async () => {
+      const barrier = await startBarrierModule();
 
-        expect(barrier.loads).toBe(2);
-        expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-        const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
-        expect(rejected.reason).toBeInstanceOf(CheckoutCartConflictError);
-        expect(await orderRowCounts()).toEqual({ orders: 1, lines: 1 });
-        expect((await storedCart()).lines).toEqual([]);
-      },
-    );
+      const results = await Promise.allSettled([
+        orders.placeOrder("key-1", CUSTOMER),
+        orders.placeOrder("key-2", CUSTOMER),
+      ]);
+
+      expect(barrier.loads).toBe(2);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+      expect(rejected.reason).toBeInstanceOf(CheckoutCartConflictError);
+      expect(await orderRowCounts()).toEqual({ orders: 1, lines: 1 });
+      expect((await storedCart()).lines).toEqual([]);
+    });
+
+    // Phase 18 R-1 (requirements.md AC8): the loser of a same-key race —
+    // a client retry overlapping its own first attempt — replays the
+    // winner's order instead of failing its version check.
+    it("gives both same-key placements priced from one cart version the one order", async () => {
+      const barrier = await startBarrierModule();
+
+      const [a, b] = await Promise.all([
+        orders.placeOrder("key-1", CUSTOMER),
+        orders.placeOrder("key-1", CUSTOMER),
+      ]);
+
+      expect(barrier.loads).toBe(2);
+      expect(b).toEqual(a);
+      expect(await orderRowCounts()).toEqual({ orders: 1, lines: 1 });
+      expect((await storedCart()).lines).toEqual([]);
+    });
+
+    it("gives many unsynchronised same-key placements the one order", async () => {
+      await cart.addItem("tiramisu", 2);
+
+      const results = await Promise.all(
+        Array.from({ length: 6 }, () => orders.placeOrder("key-1", CUSTOMER)),
+      );
+
+      expect(new Set(results.map((r) => r.orderId)).size).toBe(1);
+      expect(await orderRowCounts()).toEqual({ orders: 1, lines: 1 });
+    });
 
     // Unforced timing: the loser may have priced the cart before the winner
     // consumed it (409 CART_CONFLICT) or after (422 CART_EMPTY) — both

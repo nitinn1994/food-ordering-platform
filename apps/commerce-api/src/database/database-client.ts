@@ -10,13 +10,26 @@ import type { AppConfig } from "../config/env.schema";
 import type { DatabaseSchema } from "./database.schema";
 import { describeDriverError, toPersistenceError } from "./persistence.errors";
 
-// Fixed, not configurable yet (docs/features/phase-10-database-persistence/
-// plan.md §15): a connection attempt and a single statement are both
-// bounded, so a stuck database surfaces as an error rather than a request
-// that never finishes.
+// A connection attempt and a single statement are both bounded, so a stuck
+// database surfaces as an error rather than a request that never finishes
+// (docs/features/phase-10-database-persistence/plan.md §15). The statement
+// bound is DATABASE_STATEMENT_TIMEOUT_MS since Phase 18; idle connections
+// close after pg-pool's default 10 s.
 const CONNECTION_TIMEOUT_MS = 5_000;
-const STATEMENT_TIMEOUT_MS = 10_000;
 const APPLICATION_NAME = "commerce-api";
+
+// DATABASE_SSL → pg's `ssl` option (Phase 18, plan.md §11). Unset or
+// "disable" is plain TCP; production requires the setting (env.schema.ts).
+function sslOption(mode: AppConfig["DATABASE_SSL"]): pg.PoolConfig["ssl"] {
+  switch (mode) {
+    case "require":
+      return { rejectUnauthorized: false };
+    case "verify-full":
+      return { rejectUnauthorized: true };
+    default:
+      return false;
+  }
+}
 
 type Database = Kysely<DatabaseSchema>;
 export type DatabaseExecutor = Kysely<DatabaseSchema>;
@@ -31,8 +44,9 @@ export function createDatabase(config: AppConfig): Database {
     connectionString: config.DATABASE_URL,
     max: config.DATABASE_POOL_MAX,
     connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
-    statement_timeout: STATEMENT_TIMEOUT_MS,
+    statement_timeout: config.DATABASE_STATEMENT_TIMEOUT_MS,
     application_name: APPLICATION_NAME,
+    ssl: sslOption(config.DATABASE_SSL),
   });
   // An idle pooled connection that drops (e.g. the database restarts)
   // emits 'error' on the pool, and an unhandled 'error' event would crash
@@ -140,6 +154,26 @@ export class DatabaseClient implements OnModuleInit, OnApplicationShutdown {
     } catch (error) {
       const { code } = describeDriverError(error);
       throw new Error(`Database unreachable at startup (code ${code ?? "unknown"}).`);
+    }
+  }
+
+  // Readiness (Phase 18, plan.md AC6): true only if `select 1` completes
+  // within `timeoutMs`. Never throws; a query still running at the
+  // deadline is abandoned to the pool's own connection and statement
+  // timeouts.
+  async ping(timeoutMs: number): Promise<boolean> {
+    let timer: NodeJS.Timeout | undefined;
+    const deadline = new Promise<false>((resolve) => {
+      timer = setTimeout(() => resolve(false), timeoutMs);
+    });
+    const query = sql`select 1`.execute(this.db).then(
+      () => true,
+      () => false,
+    );
+    try {
+      return await Promise.race([query, deadline]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 

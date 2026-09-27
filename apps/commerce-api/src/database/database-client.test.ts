@@ -63,3 +63,36 @@ describe("DatabaseClient.transaction — failures of the transaction itself", ()
   });
 });
 
+describe("DatabaseClient.ping — readiness (Phase 18 AC6)", () => {
+  it("answers false, without throwing, when the database is unreachable", async () => {
+    const client = new DatabaseClient(
+      createDatabase(testConfig({ DATABASE_URL: UNREACHABLE_URL })),
+    );
+    try {
+      await expect(client.ping(1_000)).resolves.toBe(false);
+    } finally {
+      await client.onApplicationShutdown();
+    }
+  });
+
+  it("answers false at the deadline when the database does not respond", async () => {
+    // A listener that accepts the TCP connection and never speaks.
+    const { createServer } = await import("node:net");
+    const sockets: import("node:net").Socket[] = [];
+    const server = createServer((socket) => sockets.push(socket));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as import("node:net").AddressInfo;
+    const client = new DatabaseClient(
+      createDatabase(testConfig({ DATABASE_URL: `postgres://u:p@127.0.0.1:${port}/db` })),
+    );
+    try {
+      const started = Date.now();
+      await expect(client.ping(200)).resolves.toBe(false);
+      expect(Date.now() - started).toBeLessThan(1_000);
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      server.close();
+      await client.onApplicationShutdown().catch(() => undefined);
+    }
+  });
+});

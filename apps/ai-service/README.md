@@ -77,6 +77,7 @@ installs Python 3.12 itself if the machine does not have it.
 | Lint | `uv run ruff check .` |
 | Format check | `uv run ruff format --check .` |
 | Type check | `uv run mypy` |
+| Dependency vulnerability audit | `uv run pip-audit` |
 | Regenerate contract models | `uv run python scripts/generate_contracts.py` |
 | Live check against a running commerce-api (optional) | `AI_SERVICE_LIVE_COMMERCE_API_URL=http://127.0.0.1:3001 uv run pytest tests/test_live_commerce.py` |
 

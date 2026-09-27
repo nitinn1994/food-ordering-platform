@@ -62,6 +62,22 @@ class Settings(BaseModel):
     commerce_api_url: Annotated[str, Field(validate_default=True)] = ""
     # Per request: connect, read, write and pool (plan.md section 11).
     commerce_api_timeout_seconds: Annotated[float, Field(ge=0.1, le=30)] = 3.0
+    # Phase 18 (docs/features/phase-18-production-hardening/plan.md section
+    # 4, OD13). A whole turn - model calls and tools - ends at this deadline
+    # with 504 AGENT_TIMEOUT. The default sits below apps/web's 30 s turn
+    # timeout and Next's 30 s proxy timeout, so the caller hears this
+    # service's answer rather than its own timeout.
+    agent_turn_timeout_seconds: Annotated[float, Field(gt=0, le=120)] = 20.0
+    # Turns running at once in this process; the next one is refused at once
+    # with 503 AGENT_BUSY (plan.md AI-8). A backstop: per-client rate limits
+    # live at the reverse proxy (OD2).
+    agent_max_concurrent_turns: Annotated[int, Field(ge=1, le=1000)] = 16
+    # Comma-separated proxy addresses whose X-Forwarded-* headers uvicorn
+    # may trust. "" (the default) trusts none (plan.md AC14).
+    forwarded_allow_ips: str = ""
+    # On SIGTERM, how long in-flight requests get to finish before uvicorn
+    # closes them (plan.md section 9 R-7).
+    shutdown_timeout_seconds: Annotated[int, Field(ge=1, le=120)] = 25
 
     @field_validator("commerce_api_url")
     @classmethod

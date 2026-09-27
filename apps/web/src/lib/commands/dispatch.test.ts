@@ -84,6 +84,38 @@ describe("dispatchCommand — AC5 (rejects malformed payloads, not partially app
     expect(result.entry.status).toBe("rejected");
     expect(result.uiAction).toBeNull();
   });
+
+  // Phase 18 (plan.md §4): hostile shapes at the web boundary itself, not
+  // only in the contracts package.
+  it("rejects a valid command carrying an extra key", () => {
+    const result = dispatchCommand({
+      type: "HighlightItem",
+      itemId: "tiramisu",
+      execute: "alert(1)",
+    });
+    expect(result.entry.status).toBe("rejected");
+    expect(result.uiAction).toBeNull();
+  });
+
+  it.each([
+    ["__proto__", '{"type":"HighlightItem","itemId":"tiramisu","__proto__":{"polluted":true}}'],
+    ["constructor.prototype", '{"type":"HighlightItem","itemId":"tiramisu","constructor":{"prototype":{"polluted":true}}}'],
+  ])("rejects a command smuggling %s and pollutes nothing", (_label, json) => {
+    const result = dispatchCommand(JSON.parse(json) as unknown);
+    expect(result.entry.status).toBe("rejected");
+    expect(result.uiAction).toBeNull();
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+
+  it.each([
+    ["a script URL id", { type: "HighlightItem", itemId: "javascript:alert(1)" }],
+    ["a path-like id", { type: "ShowItemDetail", itemId: "../../orders" }],
+    ["an over-long search", { type: "SearchMenu", query: "x".repeat(201) }],
+  ])("rejects %s", (_label, raw) => {
+    const result = dispatchCommand(raw);
+    expect(result.entry.status).toBe("rejected");
+    expect(result.uiAction).toBeNull();
+  });
 });
 
 // Phase 15 plan.md §15, §16 (AC14): a turn's batch, command by command.

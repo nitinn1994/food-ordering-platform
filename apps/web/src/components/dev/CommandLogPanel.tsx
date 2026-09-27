@@ -5,8 +5,18 @@ import styles from "./CommandLogPanel.module.css";
 
 // Development-only. Makes the allowlist's accept/reject behaviour
 // observable — see docs/product/food-ordering-frontend-mvp.md §3, item 6.
-// Whether this ships beyond development is an open product question (§8.3).
+// Not rendered in a production build (Phase 18, plan.md §3 S-4, OD4): the
+// rejection reasons it shows describe the allowlist and its validation to
+// anyone looking. NODE_ENV is inlined by the build, so the check costs
+// nothing at runtime.
 export function CommandLogPanel() {
+  if (process.env.NODE_ENV === "production") {
+    return null;
+  }
+  return <CommandLog />;
+}
+
+function CommandLog() {
   const { commandLog } = useUi();
 
   return (

@@ -26,6 +26,7 @@ from ai_service.core.errors import register_exception_handlers
 from ai_service.core.logging import configure_logging
 from ai_service.core.request_context import RequestContextMiddleware
 from ai_service.core.request_limits import RequestLimitsMiddleware
+from ai_service.core.security_headers import SecurityHeadersMiddleware
 from ai_service.llm import build_chat_model
 from ai_service.tools.registry import build_tool_registry
 from ai_service.tools.service import ToolService
@@ -59,7 +60,9 @@ def create_app(
         tool_service = ToolService(CommerceClient(http_client), build_tool_registry())
         presentation_service = PresentationToolService(build_presentation_registry())
         agent_service = AgentService(
-            build_agent_graph(build_chat_model(), tool_service, presentation_service)
+            build_agent_graph(build_chat_model(), tool_service, presentation_service),
+            turn_timeout_seconds=settings.agent_turn_timeout_seconds,
+            max_concurrent_turns=settings.agent_max_concurrent_turns,
         )
 
     @asynccontextmanager
@@ -93,9 +96,11 @@ def create_app(
     # Each add_middleware wraps the previous ones. Body limits run inside the
     # request context, so their 413/415 carry the correlation headers.
     app.add_middleware(RequestLimitsMiddleware)
-    # Added last, so it is the outermost user middleware: every response,
-    # including the unhandled-error 500 it sends itself, passes through it.
     app.add_middleware(RequestContextMiddleware)
+    # Added last, so it is the outermost user middleware: every response,
+    # including RequestContextMiddleware's own last-resort 500, passes
+    # through it (Phase 18, plan.md AC15).
+    app.add_middleware(SecurityHeadersMiddleware)
 
     return app
 

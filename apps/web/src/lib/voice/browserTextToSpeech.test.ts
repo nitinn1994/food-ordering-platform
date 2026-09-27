@@ -3,6 +3,7 @@ import {
   createBrowserTextToSpeech,
   liveUtteranceCount,
   pickVoice,
+  watchdogBudgetMs,
   type SynthesisLike,
   type UtteranceConstructor,
 } from "./browserTextToSpeech";
@@ -188,6 +189,71 @@ describe("browser TextToSpeech — speaking a reply", () => {
     tts.speak("Hi", options);
 
     expect(only(utterances).voice).toBe(local);
+  });
+});
+
+// Phase 18 (plan.md §5 V-7, AC22): a browser that never settles an
+// utterance cannot leave the caller "speaking" forever.
+describe("browser TextToSpeech — watchdog", () => {
+  it("budgets 10 s plus 100 ms a character", () => {
+    expect(watchdogBudgetMs("")).toBe(10_000);
+    expect(watchdogBudgetMs("x".repeat(4000))).toBe(410_000);
+  });
+
+  it("cancels and reports playback-failed once, when the browser never settles", () => {
+    vi.useFakeTimers();
+    try {
+      const { tts, synthesis, utterances, calls, options } = setup();
+      tts.speak("Here's your cart.", options);
+      const before = liveUtteranceCount();
+
+      vi.advanceTimersByTime(watchdogBudgetMs("Here's your cart.") - 1);
+      expect(calls).toEqual([]);
+      vi.advanceTimersByTime(1);
+
+      expect(calls).toEqual(["error:playback-failed"]);
+      expect(synthesis.cancel).toHaveBeenCalledOnce();
+      expect(liveUtteranceCount()).toBe(before - 1);
+      // A late end from the browser is ignored: settled once.
+      only(utterances).onend?.();
+      expect(calls).toEqual(["error:playback-failed"]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([
+    ["a natural end", (u: FakeUtterance) => u.onend?.()],
+    ["a browser error", (u: FakeUtterance) => u.onerror?.({ error: "synthesis-failed" })],
+  ])("never fires after %s", (_label, settle) => {
+    vi.useFakeTimers();
+    try {
+      const { tts, synthesis, utterances, calls, options } = setup();
+      tts.speak("Done.", options);
+      settle(only(utterances));
+      const reported = [...calls];
+
+      vi.advanceTimersByTime(watchdogBudgetMs("Done.") * 2);
+
+      expect(calls).toEqual(reported);
+      expect(synthesis.cancel).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("never fires after the caller's cancel()", () => {
+    vi.useFakeTimers();
+    try {
+      const { tts, calls, options } = setup();
+      tts.speak("Done.", options).cancel();
+
+      vi.advanceTimersByTime(watchdogBudgetMs("Done.") * 2);
+
+      expect(calls).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

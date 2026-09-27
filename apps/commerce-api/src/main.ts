@@ -7,6 +7,7 @@ import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import type { NestExpressApplication } from "@nestjs/platform-express";
 import { AppModule } from "./app.module";
+import { reportBootstrapFailure } from "./bootstrap-failure";
 import { configureApp } from "./configure-app";
 import { AppLogger, logLevelsFrom } from "./common/logging/logger";
 import {
@@ -54,9 +55,15 @@ async function bootstrap(): Promise<void> {
   // shutdown hooks) lives in configureApp() — shared verbatim with every
   // API test, so a test app is configured identically to this one
   // (requirements.md AC11).
-  configureApp(app);
+  configureApp(app, { trustProxyHops: config.TRUST_PROXY_HOPS });
 
   await app.listen(config.PORT, config.HOST);
 }
 
-void bootstrap();
+// A failure after config parsing — the database unreachable at boot, the
+// port taken — is reported as one structured line and a non-zero exit,
+// never an unhandled rejection (Phase 18, plan.md §9 R-5).
+bootstrap().catch((error: unknown) => {
+  reportBootstrapFailure(error);
+  process.exit(1);
+});

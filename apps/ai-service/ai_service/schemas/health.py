@@ -7,3 +7,9 @@ class HealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal["ok"]
+
+
+class ReadinessResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["ready"]

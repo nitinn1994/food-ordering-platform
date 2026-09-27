@@ -1,0 +1,146 @@
+# Continuous integration (Phase 18, docs/features/phase-18-production-
+# hardening/plan.md §16, AC25). It runs the repository's own declared checks
+# — nothing invented — and builds the production images without pushing
+# them. There is no deploy step: deployment stays manual and explicit.
+#
+# Every action is pinned to a full commit SHA (the tag is in the comment),
+# so a moved tag cannot change what runs. The workflow needs no secrets.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: TypeScript — lint, typecheck, test, build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # pnpm's version comes from package.json's packageManager field.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+
+  database:
+    name: commerce-api — migrations and DB tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+        env:
+          POSTGRES_USER: commerce
+          POSTGRES_PASSWORD: commerce
+          POSTGRES_DB: commerce_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U commerce -d commerce_test"
+          --health-interval 2s --health-timeout 5s --health-retries 15
+    env:
+      # CI-only throwaway database; the same placeholders as .env.example.
+      TEST_DATABASE_URL: postgres://commerce:commerce@127.0.0.1:5432/commerce_test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter commerce-api...
+      # The production migration entry (dist/migrate.js), exactly as the
+      # image runs it (AC24).
+      - run: pnpm --filter commerce-api build
+      - run: pnpm --filter commerce-api start:migrate
+        env:
+          DATABASE_URL: postgres://commerce:commerce@127.0.0.1:5432/commerce_test
+      - run: pnpm --filter commerce-api test:db
+
+  python:
+    name: ai-service — ruff, format, mypy, pytest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/ai-service
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.19"
+          working-directory: apps/ai-service
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest
+
+  security:
+    name: Dependency audits
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      # Fails on a high or critical advisory (plan.md §17).
+      - run: pnpm audit --audit-level=high
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: "0.12.19"
+          working-directory: apps/ai-service
+      - run: uv sync --locked
+        working-directory: apps/ai-service
+      - run: uv run pip-audit
+        working-directory: apps/ai-service
+
+  images:
+    name: Production images — build only, never pushed
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: docker build -f apps/commerce-api/Dockerfile -t commerce-api:ci .
+      - run: docker build -f apps/ai-service/Dockerfile -t ai-service:ci .
+      - run: >-
+          docker build -f apps/web/Dockerfile
+          --build-arg COMMERCE_API_URL=http://commerce-api:3001
+          --build-arg AI_SERVICE_URL=http://ai-service:3002
+          -t web:ci .
+      # AC23: every image runs as a non-root user.
+      - run: |
+          for image in commerce-api:ci ai-service:ci web:ci; do
+            uid=$(docker run --rm --entrypoint id "$image" -u)
+            echo "$image runs as uid $uid"
+            test "$uid" != "0"
+          done

@@ -1,7 +1,8 @@
 # Commerce API
 
 **Status:** Foundation (Phase 6), a read-only Menu domain (Phase 7), a
-Cart domain (Phase 8), and an Order domain (Phase 9). `GET /health`,
+Cart domain (Phase 8), an Order domain (Phase 9), and production hardening
+(Phase 18: readiness, security headers). `GET /health`, `GET /health/ready`,
 `GET /v1/menu`, `GET /v1/menu/items/:itemId`, the four `/v1/cart` routes
 (§12), and `POST /v1/orders` / `GET /v1/orders/:orderId` (§13) exist.
 `apps/web` calls them through its proxy (Phase 11, ADR-0018). Since Phase 14,
@@ -114,7 +115,7 @@ schema but nothing in this service populates it yet.
 | 500 | `INTERNAL_ERROR` | Anything unexpected. The response never contains a stack trace, the original exception's message, or the request payload — the full detail is logged server-side instead, tagged with the request's id. |
 | 422 | *(in use)* | A domain-rule failure — a request that is well-formed but that the business refuses. First used by Cart (Phase 8): `MENU_ITEM_UNAVAILABLE`, `CART_ITEM_QUANTITY_LIMIT_EXCEEDED`; Order (Phase 9) adds `CART_EMPTY`. |
 | 409 | *(in use)* | A conflict. Cart (Phase 8) uses it for a concurrency conflict (`CART_CONFLICT`); Order (Phase 9) uses it for the first idempotency conflict (`IDEMPOTENCY_KEY_REUSED`), the case it was originally reserved for. |
-| 503 | `SERVICE_UNAVAILABLE` | The database could not be reached (Phase 10). Any route that reads or writes commerce state can return it. The body is static and names no host, URL or driver detail. Retry later. There is still no readiness endpoint (§9). |
+| 503 | `SERVICE_UNAVAILABLE` | The database could not be reached (Phase 10). Any route that reads or writes commerce state can return it. The body is static and names no host, URL or driver detail. Retry later. `GET /health/ready` reports the same condition to probes (§9). |
 
 `INVALID_PAYLOAD` and `UNSUPPORTED_CONTRACT_VERSION` are
 `@contracts/common`'s own codes (`CONTRACT_ERROR_CODES`), reused here rather
@@ -132,8 +133,21 @@ code like this without a contract change.
 | `X-Request-Id` | Response, always | Always server-generated. An inbound value is never trusted or echoed. |
 | `X-Correlation-Id` | Request + response | A valid inbound value (`@contracts/common`'s `correlationIdSchema`) is echoed back; a missing or invalid one is replaced with a generated id, never rejected outright. |
 
-Both headers are present on **every** response, including every error
-status in §6 — this was not true by construction once already (a real 413
+Since Phase 18 every response, errors included, also carries these
+security headers (`src/common/http/security-headers.middleware.ts`,
+ADR-0024):
+
+| Header | Value |
+| --- | --- |
+| `Content-Security-Policy` | `default-src 'none'; frame-ancestors 'none'` |
+| `X-Content-Type-Options` | `nosniff` |
+| `Referrer-Policy` | `no-referrer` |
+| `Cache-Control` | `no-store`. Cart, order, price and availability are authoritative, mutable state. It applies to every route, the menu included. |
+
+`X-Powered-By` is never sent.
+
+The request-id and correlation headers are present on **every** response,
+including every error status in §6 — this was not true by construction once already (a real 413
 response was missing both, found by a live check, fixed, and is now
 asserted directly in `test/validation.e2e.test.ts` and
 `test/app.e2e.test.ts`; see ADR-0013).
@@ -154,11 +168,20 @@ headers, and query string are never logged, by any code path.
 { "status": "ok" }
 ```
 
-Liveness only. Since Phase 10 there is a dependency, PostgreSQL, but it is
-checked only at boot: the process refuses to start if the database is
-unreachable. `/health` does not query it, and a readiness endpoint remains
-deferred (ADR-0017, OD15). When the database drops out after boot,
-requests get 503 `SERVICE_UNAVAILABLE` (§6).
+Liveness only. `/health` never queries a dependency, so a database outage
+never gets a healthy process restarted. The database is checked at boot
+(the process refuses to start if it is unreachable) and by readiness:
+
+```jsonc
+// GET /health/ready — unversioned (Phase 18, ADR-0024).
+{ "status": "ready" }      // 200: `select 1` answered within 1 s
+{ "status": "not_ready" }  // 503: it did not
+```
+
+The readiness body is only the status. It never names a host, error or
+timing. When the database drops out after boot, business requests get 503
+`SERVICE_UNAVAILABLE` (§6) and readiness reports `not_ready`. Both recover
+on their own once the database is back.
 
 ## 10. Worked examples
 
@@ -385,10 +408,13 @@ snapshot and empties the cart. There is no payment: a new order's status is
   returns the original order — same 201 and body — and does not touch the
   cart, even if it has been refilled since. The same key with different
   details → 409 `IDEMPOTENCY_KEY_REUSED`. A new key is a new request: once
-  an order has emptied the cart, it gets 422 `CART_EMPTY`. A retry made
-  while the first attempt is still in flight may see 409 `CART_CONFLICT`
-  or 422 `CART_EMPTY`; retrying again replays the order. Two concurrent
-  placements can never both succeed.
+  an order has emptied the cart, it gets 422 `CART_EMPTY`. A same-key
+  retry made while the first attempt is still in flight gets that attempt's
+  order: the same 201 and body (Phase 18, ADR-0024 decision 7). It loses
+  the race to consume the cart, then re-checks its key and replays; before
+  Phase 18 it saw 409 `CART_CONFLICT` or 422 `CART_EMPTY`. A
+  *different*-key placement racing the same cart still gets 409 or 422.
+  Two concurrent placements can never both create an order.
 - **Reads.** `orderId` must be a lowercase UUID (else 400, field
   `orderId`). An unknown id, or another owner's order, is 404
   `ORDER_NOT_FOUND`. There is no `GET /v1/orders` list — order history is

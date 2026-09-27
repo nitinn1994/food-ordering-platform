@@ -490,30 +490,125 @@ describe("OrderService", () => {
       return { cartService, checkout, repository, service };
     }
 
-    it.each([
-      ["different keys", "key-1", "key-2"],
-      ["the same key", "key-1", "key-1"],
-    ])(
-      "yields exactly one order for two placements with %s",
-      async (_label, firstKey, secondKey) => {
-        const { cartService, checkout, repository, service } =
-          await concurrentSetup();
+    it("yields exactly one order for two placements with different keys", async () => {
+      const { cartService, checkout, repository, service } =
+        await concurrentSetup();
 
-        const first = service.placeOrder(firstKey, CUSTOMER);
-        const second = service.placeOrder(secondKey, CUSTOMER);
-        checkout.release();
-        const results = await Promise.allSettled([first, second]);
+      const first = service.placeOrder("key-1", CUSTOMER);
+      const second = service.placeOrder("key-2", CUSTOMER);
+      checkout.release();
+      const results = await Promise.allSettled([first, second]);
 
-        const rejected = results.filter((result) => result.status === "rejected");
-        expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-        expect(rejected).toHaveLength(1);
-        expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(
-          CheckoutCartConflictError,
-        );
-        expect(repository.creates).toBe(1);
-        expect((await cartService.getCart()).items).toEqual([]);
-      },
-    );
+      const rejected = results.filter((result) => result.status === "rejected");
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(rejected).toHaveLength(1);
+      expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(
+        CheckoutCartConflictError,
+      );
+      expect(repository.creates).toBe(1);
+      expect((await cartService.getCart()).items).toEqual([]);
+    });
+
+    // Phase 18 R-1: a retry overlapping its own first attempt (the web
+    // client retries order POSTs on a timeout) gets that attempt's order,
+    // not the 409 its lost version check raised.
+    it("gives both overlapping same-key placements the one order", async () => {
+      const { cartService, checkout, repository, service } =
+        await concurrentSetup();
+
+      const first = service.placeOrder("key-1", CUSTOMER);
+      const second = service.placeOrder("key-1", CUSTOMER);
+      checkout.release();
+      const [a, b] = await Promise.all([first, second]);
+
+      expect(b).toEqual(a);
+      expect(repository.creates).toBe(1);
+      expect((await cartService.getCart()).items).toEqual([]);
+    });
+
+    it("still refuses an overlapping same-key placement with a different customer", async () => {
+      const { checkout, repository, service } = await concurrentSetup();
+
+      const first = service.placeOrder("key-1", CUSTOMER);
+      const second = service.placeOrder("key-1", { ...CUSTOMER, fullName: "Someone Else" });
+      checkout.release();
+      const results = await Promise.allSettled([first, second]);
+
+      expect(results[0].status).toBe("fulfilled");
+      expect((results[1] as PromiseRejectedResult).reason).toBeInstanceOf(
+        IdempotencyKeyReusedError,
+      );
+      expect(repository.creates).toBe(1);
+    });
+
+    // The other same-key interleaving: the retry's first lookup misses, the
+    // first attempt then completes, and the retry loads an empty cart.
+    it("replays instead of CART_EMPTY when the same-key winner completed after the lookup", async () => {
+      const cartService = new CartService(
+        new InMemoryCartRepository(),
+        new FakeCatalog(),
+        new FixedCartOwner(),
+      );
+      await cartService.addItem("tiramisu", 2);
+      const repository = new CountingOrderRepository();
+      const owner = new FakeOwnerResolver("owner-a");
+      const ids = new SequentialOrderIds();
+      const fast = new OrderService(
+        repository,
+        new CartCheckoutAdapter(cartService),
+        owner,
+        ids,
+        new InMemoryTransactionRunner(),
+      );
+      let winner: unknown;
+      // Loads only after the winner has fully completed.
+      class LateCheckoutCart extends CartCheckoutAdapter {
+        override async load(): Promise<CheckoutSnapshot> {
+          winner = await fast.placeOrder("key-1", CUSTOMER);
+          return super.load();
+        }
+      }
+      const slow = new OrderService(
+        repository,
+        new LateCheckoutCart(cartService),
+        owner,
+        ids,
+        new InMemoryTransactionRunner(),
+      );
+
+      const retried = await slow.placeOrder("key-1", CUSTOMER);
+
+      expect(retried).toEqual(winner);
+      expect(repository.creates).toBe(1);
+    });
+
+    // Step 6's lost race: the key's unique constraint fires because the
+    // winner's order landed between this request's lookup and its insert.
+    it("replays instead of a 500 when the key's uniqueness check fires", async () => {
+      const { repository, cart, service } = setup();
+      const winner = await service.placeOrder("key-1", CUSTOMER);
+      cart.lines = [TIRAMISU]; // something left to order, so step 6 is reached
+      const lookup = repository.findByIdempotencyKey.bind(repository);
+      let calls = 0;
+      repository.findByIdempotencyKey = async (ownerId, key) => {
+        calls += 1;
+        return calls === 1 ? undefined : lookup(ownerId, key); // first lookup races
+      };
+
+      const retried = await service.placeOrder("key-1", CUSTOMER);
+
+      expect(retried).toEqual(winner);
+      expect(calls).toBe(2);
+    });
+
+    it("rethrows a lost race when no order exists under the key", async () => {
+      const { cart, service } = setup();
+      cart.lines = [];
+
+      await expect(service.placeOrder("key-1", CUSTOMER)).rejects.toBeInstanceOf(
+        CartEmptyError,
+      );
+    });
 
     // The other interleaving: one placement loads the cart, then waits while
     // another completes entirely (consumed, order stored). Only the explicit

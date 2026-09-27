@@ -40,6 +40,20 @@ export function pickVoice(
   return inLanguage.find((voice) => voice.localService) ?? inLanguage[0] ?? null;
 }
 
+// Watchdog (Phase 18, plan.md §5 V-7, AC22): a browser that never fires end
+// or error would leave the caller "speaking" until the customer acts. Past
+// this budget the utterance is cancelled and reported as a playback
+// failure. Generous on purpose — 10 s plus 100 ms a character, about half
+// the pace of normal speech — so a long reply is never cut off while it is
+// really being spoken; the contract's 4000-character maximum reply gets
+// 410 s.
+export const WATCHDOG_BASE_MS = 10_000;
+export const WATCHDOG_MS_PER_CHAR = 100;
+
+export function watchdogBudgetMs(text: string): number {
+  return WATCHDOG_BASE_MS + text.length * WATCHDOG_MS_PER_CHAR;
+}
+
 // For tests: how many utterances are still held.
 export function liveUtteranceCount(): number {
   return liveUtterances.size;
@@ -61,8 +75,10 @@ export function createBrowserTextToSpeech(scope: SpeechSynthesisScope = defaultS
       // would leave the caller waiting for an end (review finding 2).
       let settled = false;
       let utterance: SpeechSynthesisUtterance | null = null;
+      let watchdog: ReturnType<typeof setTimeout> | undefined;
       const release = () => {
         settled = true;
+        clearTimeout(watchdog);
         if (utterance) {
           liveUtterances.delete(utterance);
         }
@@ -96,6 +112,12 @@ export function createBrowserTextToSpeech(scope: SpeechSynthesisScope = defaultS
         utterance.onerror = () => settle(() => options.onError("playback-failed"));
         liveUtterances.add(utterance);
         synthesis.speak(utterance);
+        watchdog = setTimeout(() => {
+          settle(() => {
+            synthesis.cancel();
+            options.onError("playback-failed");
+          });
+        }, watchdogBudgetMs(text));
       } catch {
         settle(() => options.onError("playback-failed"));
         return { cancel: () => {} };
