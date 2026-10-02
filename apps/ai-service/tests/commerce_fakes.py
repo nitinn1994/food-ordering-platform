@@ -53,6 +53,18 @@ CART_LINE: dict[str, Any] = {
 }
 CART: dict[str, Any] = {"items": [CART_LINE], "itemCount": 2, "subtotalCents": 1500}
 EMPTY_CART: dict[str, Any] = {"items": [], "itemCount": 0, "subtotalCents": 0}
+# GET /v1/nudges (mcdelivery-redesign Phase 4).
+NUDGE: dict[str, Any] = {
+    "id": "rule:complete-meal-side:garlic-bread",
+    "kind": "complete-meal",
+    "surface": "voice",
+    "itemId": "garlic-bread",
+    "itemName": "Garlic Bread",
+    "headline": "Add Garlic Bread to complete your meal",
+    "priceCents": 595,
+}
+NUDGES: dict[str, Any] = {"nudges": [NUDGE]}
+NO_NUDGES: dict[str, Any] = {"nudges": []}
 
 Outcome = (
     httpx.Response

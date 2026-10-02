@@ -29,6 +29,8 @@ from ai_service.llm.simulated import (
 from scripts.generate_contracts import UI_COMMANDS_SCHEMA_DIR
 from tests.commerce_fakes import (
     CART,
+    NUDGE,
+    NUDGES,
     FakeCommerce,
     contract_error,
     json_response,
@@ -284,7 +286,31 @@ def test_simulated_add_that_succeeds_shows_the_cart(
 
     assert body["reply"] == ADDED_REPLY
     assert _commands(body) == [OPEN_CART]
-    assert commerce.request_json() == {"itemId": "tiramisu", "quantity": 1}
+    # The add is the first request; the suggestion lookup after it (Phase 4)
+    # finds no route here, so nothing is offered or shown.
+    assert commerce.request_json(0) == {"itemId": "tiramisu", "quantity": 1}
+
+
+def test_simulated_add_offers_commerce_apis_nudge_and_shows_it(
+    agent_client: AgentClientFactory,
+) -> None:
+    # mcdelivery-redesign Phase 4 (requirements.md AC-V2): one suggestion
+    # sentence, and a ShowNudge that carries only the nudge's id.
+    commerce = (
+        FakeCommerce()
+        .on("POST", "/v1/cart/items", json_response(200, CART))
+        .on("GET", "/v1/nudges", json_response(200, NUDGES))
+    )
+
+    body = _ok_body(
+        _turn(agent_client, SimulatedChatModel(), commerce, message="add tiramisu")
+    )
+
+    assert body["reply"] == f"{ADDED_REPLY} {NUDGE['headline']}?"
+    assert _commands(body) == [OPEN_CART, {"type": "ShowNudge", "nudgeId": NUDGE["id"]}]
+    nudge_request = commerce.requests[-1]
+    assert (nudge_request.method, nudge_request.url.path) == ("GET", "/v1/nudges")
+    assert dict(nudge_request.url.params) == {"surface": "voice", "itemId": "tiramisu"}
 
 
 @pytest.mark.parametrize(

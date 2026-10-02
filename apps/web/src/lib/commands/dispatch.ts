@@ -12,16 +12,26 @@ import type { UiAction, CommandLogEntry } from "../state/uiStore";
 // than merely asserted (AC8).
 export function commandToUiAction(command: UiCommand): UiAction {
   switch (command.type) {
+    // clearMenuFilters: the customer's chip filters must not hide what a
+    // command points at (uiStore.tsx, FromCommand).
     case "ShowMenuCategory":
-      return { type: "SELECT_CATEGORY", categoryId: command.categoryId };
+      return {
+        type: "SELECT_CATEGORY",
+        categoryId: command.categoryId,
+        clearMenuFilters: true,
+      };
     case "HighlightItem":
-      return { type: "HIGHLIGHT_ITEM", itemId: command.itemId };
+      return { type: "HIGHLIGHT_ITEM", itemId: command.itemId, clearMenuFilters: true };
     case "OpenCartPanel":
       return { type: "SET_CART_PANEL_OPEN", open: command.open };
     case "ShowItemDetail":
       return { type: "SHOW_ITEM_DETAIL", itemId: command.itemId };
     case "SearchMenu":
-      return { type: "SET_SEARCH_QUERY", query: command.query };
+      return { type: "SET_SEARCH_QUERY", query: command.query, clearMenuFilters: true };
+    // Only the id travels: NudgeToast fetches the nudge from commerce-api
+    // and shows it only if it is offered there (requirements.md AC-V1).
+    case "ShowNudge":
+      return { type: "SHOW_NUDGE", nudgeId: command.nudgeId };
   }
 }
 

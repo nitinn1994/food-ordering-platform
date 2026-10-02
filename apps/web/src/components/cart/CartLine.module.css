@@ -10,13 +10,13 @@
 }
 
 .changed {
-  background-color: #fff8dc;
+  background-color: var(--color-highlight);
 }
 
 .removeButton {
   border: none;
   background: none;
-  color: #a00;
+  color: var(--color-danger);
   cursor: pointer;
   text-decoration: underline;
   min-height: 44px;
@@ -31,6 +31,6 @@
 }
 
 .unavailable {
-  color: #a00;
+  color: var(--color-danger);
   font-weight: 600;
 }

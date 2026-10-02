@@ -26,12 +26,17 @@ from ai_service.clients.commerce import (
     build_commerce_http_client,
 )
 from ai_service.config import Settings
-from ai_service.contracts.api_contracts import CartResponse, MenuResponse
+from ai_service.contracts.api_contracts import (
+    CartResponse,
+    MenuResponse,
+    NudgesResponse,
+)
 from ai_service.core.request_context import correlation_id_var
 from tests.commerce_fakes import (
     CART,
     EMPTY_CART,
     MENU,
+    NUDGES,
     FakeCommerce,
     contract_error,
     json_response,
@@ -59,6 +64,14 @@ OPERATIONS: dict[str, tuple[Operation, str, str, Any, Any, type[BaseModel]]] = {
         CART,
         CartResponse,
     ),
+    "get_nudges": (
+        lambda c: c.get_nudges("post-add", "tiramisu"),
+        "GET",
+        "/v1/nudges",
+        None,
+        NUDGES,
+        NudgesResponse,
+    ),
     "add_cart_item": (
         lambda c: c.add_cart_item("tiramisu", 2),
         "POST",
@@ -84,7 +97,7 @@ OPERATIONS: dict[str, tuple[Operation, str, str, Any, Any, type[BaseModel]]] = {
         CartResponse,
     ),
 }
-READS = ["get_menu", "get_cart"]
+READS = ["get_menu", "get_cart", "get_nudges"]
 WRITES = ["add_cart_item", "set_cart_item_quantity", "remove_cart_item"]
 
 
@@ -102,7 +115,7 @@ def _raises(fake: FakeCommerce, operation: Operation) -> CommerceClientError:
 # Public surface (AC3)
 
 
-def test_public_surface_is_exactly_the_five_operations() -> None:
+def test_public_surface_is_exactly_the_six_operations() -> None:
     public = {name for name in dir(CommerceClient) if not name.startswith("_")}
 
     assert public == set(OPERATIONS)
@@ -112,7 +125,8 @@ def test_public_surface_is_exactly_the_five_operations() -> None:
 def test_no_operation_accepts_a_url_method_or_headers(name: str) -> None:
     parameters = set(inspect.signature(getattr(CommerceClient, name)).parameters)
 
-    assert parameters <= {"self", "item_id", "quantity"}
+    # surface (get_nudges) is checked against the contract's enum before use.
+    assert parameters <= {"self", "item_id", "quantity", "surface"}
 
 
 # Routes, bodies, parsing (AC13 at the client level)
@@ -126,7 +140,10 @@ def test_each_operation_calls_its_one_route(name: str) -> None:
     result = fake.run(operation)
 
     assert isinstance(result, model)
-    assert result.model_dump(mode="json") == response_body
+    # exclude_unset: an optional field the response omitted (e.g. the menu's
+    # presentation fields, mcdelivery-redesign Phase 2) stays omitted, while
+    # a null the response did send is still compared.
+    assert result.model_dump(mode="json", exclude_unset=True) == response_body
     assert [(r.method, r.url.path) for r in fake.requests] == [(method, path)]
     assert fake.request_json() == request_body
     if request_body is not None:
@@ -447,3 +464,40 @@ def test_a_raised_decoding_error_is_a_bad_response(name: str) -> None:
     fake, operation = _scripted(name, httpx.DecodingError)
 
     assert type(_raises(fake, operation)) is CommerceBadResponseError
+
+
+# get_nudges (mcdelivery-redesign Phase 4)
+
+
+def test_get_nudges_sends_surface_and_item_as_an_encoded_query() -> None:
+    fake = FakeCommerce().on("GET", "/v1/nudges", json_response(200, NUDGES))
+
+    result = fake.run(lambda c: c.get_nudges("item-detail", "garlic-bread"))
+
+    assert isinstance(result, NudgesResponse)
+    assert dict(fake.requests[-1].url.params) == {
+        "surface": "item-detail",
+        "itemId": "garlic-bread",
+    }
+
+
+def test_get_nudges_omits_an_absent_item() -> None:
+    fake = FakeCommerce().on("GET", "/v1/nudges", json_response(200, NUDGES))
+
+    fake.run(lambda c: c.get_nudges("cart"))
+
+    assert dict(fake.requests[-1].url.params) == {"surface": "cart"}
+
+
+@pytest.mark.parametrize(
+    ("surface", "item_id"),
+    [("checkout", None), ("cart", "x&surface=voice"), ("cart", "../cart")],
+)
+def test_get_nudges_refuses_arguments_the_contract_forbids(
+    surface: str, item_id: str | None
+) -> None:
+    fake = FakeCommerce()
+
+    with pytest.raises(InvalidCommerceArgumentError):
+        fake.run(lambda c: c.get_nudges(surface, item_id))
+    assert fake.requests == []

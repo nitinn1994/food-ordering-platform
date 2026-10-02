@@ -150,8 +150,23 @@ docker compose -f infrastructure/docker/compose.prod.yaml run --rm --no-deps \
   migrate node dist/seed.js --allow-production
 ```
 
-The seed is an upsert of the in-code menu. Re-running it restores the
-seeded items' names, prices and availability.
+The seed is an upsert of the in-code demo menu (`DEMO_MENU_SEED`, 8
+categories and 30 items, since mcdelivery-redesign Phase 2; before that
+it was the 3-category test menu). Re-running it restores the seeded
+items' names, prices, availability and presentation fields.
+
+- **It never deletes.** On a database seeded before Phase 2, the demo
+  categories' positions collide with the old ones. The seed then writes
+  nothing and prints "an earlier menu's categories already hold these
+  positions". Remove the old menu rows first (`menu_items`, then
+  `menu_categories`). Carts and orders do not reference `menu_items` by
+  foreign key, and order lines keep their own name and price snapshot.
+  This is a manual, reviewed step: there is no command for it.
+- **Deploy order for this change.** `@contracts/api-contracts` is strict,
+  so a `web` or `ai-service` build older than the Phase 2 contract rejects
+  the whole `/v1/menu` once it carries the new optional fields (image,
+  weight, badge, featured). They appear only after the demo seed is
+  loaded. So deploy every service first, and seed last.
 
 **Verify** after every deploy:
 

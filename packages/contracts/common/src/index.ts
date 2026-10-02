@@ -9,8 +9,11 @@ export {
   menuCategoryIdSchema,
   correlationIdSchema,
   idempotencyKeySchema,
+  MAX_NUDGE_ID_LENGTH,
+  nudgeIdSchema,
 } from "./ids";
 export type {
+  NudgeId,
   MenuItemId,
   MenuCategoryId,
   CorrelationId,

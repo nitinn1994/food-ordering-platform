@@ -1,0 +1,183 @@
+/* The floating microphone: narrow screens only, bottom left, above the
+   fixed cart bar. The header microphone covers wide screens. */
+.fab {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .fab {
+    position: fixed;
+    bottom: calc(var(--cart-bar-height) + var(--space-3));
+    left: var(--space-3);
+    z-index: 18;
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    border: none;
+    border-radius: 50%;
+    background: var(--color-brand-red);
+    color: var(--color-on-brand);
+    box-shadow: var(--shadow-raised);
+    cursor: pointer;
+  }
+}
+
+.sheet {
+  position: fixed;
+  top: calc(var(--header-height) + var(--space-3));
+  right: var(--space-4);
+  z-index: 30;
+  display: grid;
+  gap: var(--space-3);
+  width: min(420px, calc(100vw - 2 * var(--space-4)));
+  max-height: calc(100dvh - var(--header-height) - var(--space-6));
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5);
+  border-top: 4px solid var(--color-brand-red);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-raised);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.close {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-surface-warm);
+  font-size: 1.4rem;
+  cursor: pointer;
+}
+
+.disclosure,
+.intro,
+.status,
+.recording,
+.interim {
+  margin: 0;
+}
+
+.disclosure {
+  color: var(--color-muted);
+  font-size: 0.85rem;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.controls button {
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.controls .mic {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 52px;
+  border: none;
+  background: var(--color-brand-red);
+  color: var(--color-on-brand);
+}
+
+.controls .mic:disabled {
+  background: var(--color-border);
+  color: var(--color-muted);
+  cursor: not-allowed;
+}
+
+.listening {
+  box-shadow: 0 0 0 4px var(--color-highlight);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.recording {
+  color: var(--color-danger);
+  font-weight: 700;
+}
+
+.status {
+  min-height: 1.25rem;
+}
+
+.interim {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
+.exchange {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-warm);
+}
+
+.exchange p {
+  margin: 0;
+}
+
+.who {
+  display: block;
+  color: var(--color-accent-strong);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.prompts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.prompt {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-warm);
+  color: var(--color-accent-strong);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 8px var(--color-highlight);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listening {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .sheet {
+    right: var(--space-2);
+    left: var(--space-2);
+    width: auto;
+  }
+}

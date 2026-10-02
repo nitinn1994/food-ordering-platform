@@ -1,4 +1,5 @@
-// Kysely's view of the tables migrations/0001_initial_schema.ts creates —
+// Kysely's view of the tables migrations/0001_initial_schema.ts creates
+// (plus the menu presentation columns of 0002_menu_presentation.ts) —
 // row shapes only, hand-written (docs/features/phase-10-database-persistence/
 // plan.md §4, OD2). These are storage types, not domain types: each
 // Postgres*Repository maps between them and its own module's domain model,
@@ -11,10 +12,13 @@
 // Column types as `pg` returns them: integer / smallint → number,
 // timestamptz → Date, text[] → string[], uuid → lowercase string.
 
+import type { Generated } from "kysely";
+
 export interface MenuCategoriesTable {
   id: string;
   name: string;
   position: number;
+  image_url: string | null;
 }
 
 export interface MenuItemsTable {
@@ -29,6 +33,12 @@ export interface MenuItemsTable {
   dietary_tags: string[];
   allergens: string[];
   calories: number;
+  image_url: string | null;
+  weight_grams: number | null;
+  badge: string | null;
+  // Defaults to '{}' (0002), so an insert may omit it; nullable columns are
+  // already optional on insert.
+  featured: Generated<string[]>;
 }
 
 export interface CartsTable {

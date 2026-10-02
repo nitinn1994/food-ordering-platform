@@ -5,6 +5,7 @@ export {
   openCartPanelSchema,
   showItemDetailSchema,
   searchMenuSchema,
+  showNudgeSchema,
   UI_COMMAND_TYPES,
   MAX_SEARCH_QUERY_LENGTH,
 } from "./commands";

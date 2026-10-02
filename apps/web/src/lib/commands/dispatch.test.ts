@@ -19,13 +19,14 @@ describe("dispatchCommand — AC3 (accepts a valid command)", () => {
     expect(result.uiAction).toEqual({
       type: "SELECT_CATEGORY",
       categoryId: "desserts",
+      clearMenuFilters: true,
     });
   });
 
   it("maps HighlightItem and OpenCartPanel to their ui actions", () => {
     expect(
       commandToUiAction({ type: "HighlightItem", itemId: "tiramisu" }),
-    ).toEqual({ type: "HIGHLIGHT_ITEM", itemId: "tiramisu" });
+    ).toEqual({ type: "HIGHLIGHT_ITEM", itemId: "tiramisu", clearMenuFilters: true });
     expect(commandToUiAction({ type: "OpenCartPanel", open: true })).toEqual({
       type: "SET_CART_PANEL_OPEN",
       open: true,
@@ -50,6 +51,7 @@ describe("dispatchCommand — AC3 (accepts a valid command)", () => {
     expect(result.uiAction).toEqual({
       type: "SET_SEARCH_QUERY",
       query: "pizza",
+      clearMenuFilters: true,
     });
   });
 });
@@ -145,11 +147,11 @@ describe("dispatchBatch", () => {
     );
 
     expect(steps.map((step) => step.uiAction)).toEqual([
-      { type: "SELECT_CATEGORY", categoryId: "desserts" },
-      { type: "HIGHLIGHT_ITEM", itemId: "tiramisu" },
+      { type: "SELECT_CATEGORY", categoryId: "desserts", clearMenuFilters: true },
+      { type: "HIGHLIGHT_ITEM", itemId: "tiramisu", clearMenuFilters: true },
       { type: "SET_CART_PANEL_OPEN", open: true },
       { type: "SHOW_ITEM_DETAIL", itemId: "tiramisu" },
-      { type: "SET_SEARCH_QUERY", query: "soup" },
+      { type: "SET_SEARCH_QUERY", query: "soup", clearMenuFilters: true },
     ]);
     expect(steps.every((step) => step.entry.status === "accepted")).toBe(true);
   });
@@ -210,5 +212,24 @@ describe("dispatch.ts source — AC8 (structural boundary)", () => {
     for (const line of importLines) {
       expect(line).not.toMatch(/cartStore/);
     }
+  });
+});
+
+describe("ShowNudge (mcdelivery-redesign Phase 4, AC-V1)", () => {
+  it("maps to a SHOW_NUDGE request carrying only the id", () => {
+    const result = dispatchCommand({ type: "ShowNudge", nudgeId: "rule:complete-meal-side:fries" });
+    expect(result.entry.status).toBe("accepted");
+    expect(result.uiAction).toEqual({ type: "SHOW_NUDGE", nudgeId: "rule:complete-meal-side:fries" });
+  });
+
+  it("rejects a ShowNudge that tries to carry an item, a price or copy", () => {
+    const result = dispatchCommand({
+      type: "ShowNudge",
+      nudgeId: "rule:x:fries",
+      headline: "Hurry!",
+      priceCents: 1,
+    });
+    expect(result.entry.status).toBe("rejected");
+    expect(result.uiAction).toBeNull();
   });
 });

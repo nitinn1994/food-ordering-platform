@@ -1,5 +1,6 @@
 import type { Migration } from "kysely/migration";
 import * as initialSchema from "./0001_initial_schema";
+import * as menuPresentation from "./0002_menu_presentation";
 
 // Every migration, in order, listed explicitly rather than discovered on
 // disk (docs/features/phase-10-database-persistence/plan.md §10, OD7): the
@@ -11,4 +12,5 @@ import * as initialSchema from "./0001_initial_schema";
 // add one line here. Never edit or reorder an existing entry.
 export const MIGRATIONS: Readonly<Record<string, Migration>> = {
   "0001_initial_schema": initialSchema,
+  "0002_menu_presentation": menuPresentation,
 };

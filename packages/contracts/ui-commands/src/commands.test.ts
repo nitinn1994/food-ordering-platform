@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseCommand } from "./parse";
-import { UI_COMMAND_TYPES } from "./commands";
+import { UI_COMMAND_TYPES, uiCommandSchema } from "./commands";
 
 describe("parseCommand — accepts valid commands (AC3)", () => {
   it("accepts a valid ShowMenuCategory", () => {
@@ -44,6 +44,7 @@ describe("parseCommand — accepts valid commands (AC3)", () => {
       "OpenCartPanel",
       "ShowItemDetail",
       "SearchMenu",
+      "ShowNudge",
     ]);
   });
 });
@@ -152,5 +153,27 @@ describe("SearchMenu.query is bounded (AC9)", () => {
       query: "a".repeat(201),
     });
     expect(result.accepted).toBe(false);
+  });
+});
+
+describe("ShowNudge (mcdelivery-redesign Phase 4)", () => {
+  it("accepts a nudge id and nothing else", () => {
+    expect(
+      uiCommandSchema.safeParse({ type: "ShowNudge", nudgeId: "rule:complete-meal-side:fries-medium" })
+        .success,
+    ).toBe(true);
+  });
+
+  it.each([
+    ["a malformed id", { type: "ShowNudge", nudgeId: "fries-medium" }],
+    ["an item instead of an id", { type: "ShowNudge", nudgeId: "rule:x:fries", itemId: "fries" }],
+    ["copy or a price", { type: "ShowNudge", nudgeId: "rule:x:fries", headline: "Buy now", priceCents: 1 }],
+    ["no id", { type: "ShowNudge" }],
+  ])("rejects %s", (_label, command) => {
+    expect(uiCommandSchema.safeParse(command).success).toBe(false);
+  });
+
+  it("is in UI_COMMAND_TYPES", () => {
+    expect(UI_COMMAND_TYPES).toContain("ShowNudge");
   });
 });

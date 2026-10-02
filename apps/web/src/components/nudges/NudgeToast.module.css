@@ -1,0 +1,23 @@
+/* Bottom right on wide screens; above the fixed cart bar on narrow ones.
+   Empty, it takes no space and catches no clicks. */
+.region {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 17;
+  width: min(360px, calc(100vw - 2 * var(--space-4)));
+  pointer-events: none;
+}
+
+.region > * {
+  pointer-events: auto;
+}
+
+@media (max-width: 1023px) {
+  .region {
+    right: var(--space-2);
+    bottom: calc(var(--cart-bar-height) + var(--space-2));
+    left: var(--space-2);
+    width: auto;
+  }
+}

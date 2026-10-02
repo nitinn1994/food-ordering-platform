@@ -1,5 +1,6 @@
 .lines {
   list-style: none;
+  border-bottom: 1px solid var(--color-border);
   margin: 0 0 1rem;
   padding: 0;
   display: grid;
@@ -12,13 +13,19 @@
 }
 
 .checkoutLink {
-  display: inline-block;
-  margin-top: 1rem;
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--space-4);
   min-height: 44px;
-  padding: 0.5rem 1rem;
+  padding: 0 var(--space-5);
+  border-radius: var(--radius-sm);
+  background: var(--color-brand-yellow);
+  color: var(--color-text);
+  font-weight: var(--font-weight-heavy);
+  text-decoration: none;
 }
 
 .checkoutBlocked {
   margin-top: 1rem;
-  color: #a00;
+  color: var(--color-danger);
 }

@@ -99,3 +99,70 @@ describe("MenuList — AC10 (no-results, distinct from empty-category)", () => {
     );
   });
 });
+
+describe("MenuList — Veg / Non-Veg chips (mcdelivery-redesign AC-U4)", () => {
+  it("filters to vegetarian items, and back to everything when pressed again", async () => {
+    renderWithProviders(MENU);
+    const user = userEvent.setup();
+    const veg = screen.getByRole("button", { name: "Veg" });
+
+    expect(veg).toHaveAttribute("aria-pressed", "false");
+    await user.click(veg);
+
+    expect(veg).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Garlic Bread")).toBeInTheDocument();
+    expect(screen.queryByText("Soup of the Day")).not.toBeInTheDocument();
+
+    await user.click(veg);
+    expect(screen.getByText("Soup of the Day")).toBeInTheDocument();
+  });
+
+  it("filters to non-vegetarian items, with only one chip pressed at a time", async () => {
+    renderWithProviders(MENU);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Veg" }));
+    await user.click(screen.getByRole("button", { name: "Non-Veg" }));
+
+    expect(screen.getByRole("button", { name: "Veg" })).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByText("Soup of the Day")).toBeInTheDocument();
+    expect(screen.queryByText("Garlic Bread")).not.toBeInTheDocument();
+  });
+});
+
+describe("MenuList — Popular / Deals / New Launch chips (mcdelivery-redesign Phase 2)", () => {
+  const FEATURED: readonly MenuCategory[] = MENU.map((category) => ({
+    ...category,
+    items: category.items.map((item) =>
+      item.id === "tiramisu" ? { ...item, featured: ["deal" as const] } : item,
+    ),
+  }));
+
+  it("offers only the chips the menu can fill, and filters by the one pressed", async () => {
+    renderWithProviders(FEATURED);
+    const user = userEvent.setup();
+
+    expect(screen.queryByRole("button", { name: "Popular" })).not.toBeInTheDocument();
+    const deals = screen.getByRole("button", { name: "Deals" });
+    await user.click(deals);
+
+    expect(deals).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Tiramisu")).toBeInTheDocument();
+    expect(screen.queryByText("Garlic Bread")).not.toBeInTheDocument();
+  });
+
+  it("says when the combined filters leave nothing", async () => {
+    renderWithProviders(FEATURED);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Deals" }));
+    await user.click(screen.getByRole("button", { name: "Non-Veg" }));
+
+    expect(screen.getByRole("status")).toHaveTextContent("No items match these filters.");
+  });
+
+  it("renders no featured chips for a menu without featured items", () => {
+    renderWithProviders(MENU);
+    expect(screen.queryByRole("group", { name: "Featured" })).not.toBeInTheDocument();
+  });
+});

@@ -6,7 +6,7 @@ import styles from "./page.module.css";
 export default function Loading() {
   return (
     <main className={styles.main} aria-busy="true">
-      <h1>Food Ordering Platform</h1>
+      <h1>Our Menu</h1>
       <p role="status">Loading the menu…</p>
     </main>
   );

@@ -73,7 +73,7 @@ def test_reads_perform_no_intent() -> None:
 
     reads = [d for d in registry.values() if d.category == "read"]
 
-    assert {d.name for d in reads} == {"get_menu", "get_cart"}
+    assert {d.name for d in reads} == {"get_menu", "get_cart", "get_nudges"}
     assert all(d.intent is None for d in reads)
 
 

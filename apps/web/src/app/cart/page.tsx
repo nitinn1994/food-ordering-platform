@@ -1,4 +1,5 @@
 import { CartList } from "../../components/cart/CartList";
+import { CartNudge } from "../../components/nudges/CartNudge";
 import styles from "./page.module.css";
 
 // No server-side data: CartList renders commerce-api's cart from
@@ -11,6 +12,7 @@ export default function CartPage() {
     <main className={styles.main}>
       <h1>Cart</h1>
       <CartList />
+      <CartNudge />
     </main>
   );
 }

@@ -12,6 +12,7 @@ import {
   createOrderRequestSchema,
   orderResponseSchema,
 } from "../src/order.ts";
+import { nudgesResponseSchema } from "../src/nudge.ts";
 
 // See packages/contracts/common/scripts/emit-schema.ts for the rationale —
 // this file follows the identical pattern.
@@ -61,6 +62,14 @@ export const ARTIFACTS: readonly Artifact[] = [
     file: "order-create-request.v1.json",
     id: "urn:food-ordering-platform:contracts:api-contracts:order-create-request:v1",
     schema: createOrderRequestSchema,
+  },
+  // Nudges: the response only. ai-service reads it (get_nudges, Phase 4);
+  // the query is a GET query string (docs/features/mcdelivery-redesign/
+  // plan.md, Phase 3).
+  {
+    file: "nudges.v1.json",
+    id: "urn:food-ordering-platform:contracts:api-contracts:nudges:v1",
+    schema: nudgesResponseSchema,
   },
 ];
 

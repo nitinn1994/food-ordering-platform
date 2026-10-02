@@ -1,41 +1,144 @@
 .card {
+  position: relative;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  padding: 0.75rem;
-  border: 1px solid #e0e0e0;
-  border-radius: 8px;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .highlighted {
-  border-color: #222;
-  box-shadow: 0 0 0 2px #222;
+  border-color: var(--color-brand-yellow);
+  box-shadow: 0 0 0 3px var(--color-brand-yellow);
+  background: var(--color-highlight);
+}
+
+/* The badge, top left, like the reference's offer ribbon — but only ever a
+   fixed, true label (New, Bestseller, Value pick). */
+.badge {
+  position: absolute;
+  top: var(--space-3);
+  left: 0;
+  z-index: 1;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--color-brand-red);
+  color: var(--color-on-brand);
+  font-size: 0.8rem;
+  font-weight: var(--font-weight-heavy);
+}
+
+/* The veg / non-veg square, top right, as on the reference cards. */
+.marker {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  background: var(--color-surface);
+}
+
+.marker::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.veg {
+  color: var(--color-veg);
+}
+
+.nonVeg {
+  color: var(--color-nonveg);
 }
 
 .detailsButton {
+  display: grid;
+  gap: var(--space-1);
+  flex: 1;
+  align-content: start;
   background: none;
   border: none;
   padding: 0;
   margin: 0;
   text-align: left;
   cursor: pointer;
-  font: inherit;
   color: inherit;
 }
 
-.addButton {
-  padding: 0.4rem 0.9rem;
-  border: 1px solid #222;
-  border-radius: 6px;
-  background: #222;
-  color: #fff;
-  cursor: pointer;
+.image {
+  display: grid;
+  place-items: center;
+  height: 140px;
+  margin-bottom: var(--space-2);
+}
+
+.image svg,
+.image img {
+  width: 70%;
+  max-width: 180px;
+  height: auto;
+  object-fit: contain;
+}
+
+.name {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.description {
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.price {
+  margin: var(--space-2) 0 0;
+  font-size: 1.1rem;
+  font-weight: var(--font-weight-heavy);
+}
+
+.addButton {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--space-4);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-brand-yellow);
+  color: var(--color-text);
+  font-weight: var(--font-weight-heavy);
+  cursor: pointer;
+}
+
+.addButton:hover:not(:disabled) {
+  background: var(--color-brand-yellow-dark);
+}
+
 .addButton:disabled {
-  background: #999;
-  border-color: #999;
+  background: var(--color-border);
+  color: var(--color-muted);
   cursor: not-allowed;
+}
+
+.meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+  color: var(--color-muted);
+  font-size: 0.75rem;
 }

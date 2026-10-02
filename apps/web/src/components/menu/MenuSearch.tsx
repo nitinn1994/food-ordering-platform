@@ -17,7 +17,7 @@ export function MenuSearch() {
           type="search"
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="Search for an item…"
+          placeholder="Search here"
         />
         {searchQuery.length > 0 && (
           <button

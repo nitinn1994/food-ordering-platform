@@ -4,6 +4,7 @@ import { createTestDatabase, resetDatabase } from "../../test/support/test-datab
 import { MenuInvariantViolationError } from "../modules/menu/domain/menu.invariants";
 import type { MenuCategory } from "../modules/menu/domain/menu.types";
 import { MENU_SEED } from "../modules/menu/infrastructure/menu.seed";
+import { DEMO_MENU_SEED } from "../modules/menu/infrastructure/demo-menu.seed";
 import type { DatabaseSchema } from "./database.schema";
 import { seedMenu } from "./menu-seed";
 
@@ -54,6 +55,11 @@ describe("seedMenu (AC3)", () => {
         dietary_tags: [...item.dietaryTags],
         allergens: [...item.allergens],
         calories: item.calories,
+        // MENU_SEED has no presentation fields (mcdelivery-redesign Phase 2).
+        image_url: null,
+        weight_grams: null,
+        badge: null,
+        featured: [],
       })),
     ).sort((a, b) => a.category_id.localeCompare(b.category_id) || a.position - b.position);
   }
@@ -61,9 +67,9 @@ describe("seedMenu (AC3)", () => {
   it("loads the 3 categories in display order", async () => {
     await seedMenu(db);
     expect(await categoryRows()).toEqual([
-      { id: "starters", name: "Starters", position: 0 },
-      { id: "mains", name: "Mains", position: 1 },
-      { id: "desserts", name: "Desserts", position: 2 },
+      { id: "starters", name: "Starters", position: 0, image_url: null },
+      { id: "mains", name: "Mains", position: 1, image_url: null },
+      { id: "desserts", name: "Desserts", position: 2, image_url: null },
     ]);
   });
 
@@ -143,5 +149,28 @@ describe("seedMenu (AC3)", () => {
     });
     expect(await categoryRows()).toEqual([]);
     expect(await itemRows()).toEqual([]);
+  });
+
+  it("loads the demo menu with its presentation fields (mcdelivery-redesign Phase 2)", async () => {
+    await seedMenu(db, DEMO_MENU_SEED);
+
+    const categories = await categoryRows();
+    expect(categories.map((row) => [row.id, row.image_url])).toEqual(
+      DEMO_MENU_SEED.map((category) => [category.id, category.imageUrl]),
+    );
+    const burger = await db
+      .selectFrom("menu_items")
+      .select(["image_url", "weight_grams", "badge", "featured"])
+      .where("id", "=", "paneer-crunch-burger")
+      .executeTakeFirstOrThrow();
+    expect(burger).toEqual({
+      image_url: "/menu/burger.svg",
+      weight_grams: 190,
+      badge: "bestseller",
+      featured: ["popular"],
+    });
+    expect(await itemRows()).toHaveLength(
+      DEMO_MENU_SEED.reduce((count, category) => count + category.items.length, 0),
+    );
   });
 });

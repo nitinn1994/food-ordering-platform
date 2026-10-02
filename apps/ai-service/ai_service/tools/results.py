@@ -16,7 +16,11 @@ from typing import Annotated, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ai_service.contracts.api_contracts import CartResponse, MenuResponse
+from ai_service.contracts.api_contracts import (
+    CartResponse,
+    MenuResponse,
+    NudgesResponse,
+)
 from ai_service.schemas.errors import (
     MAX_CODE_LENGTH,
     MAX_FIELD_LENGTH,
@@ -91,7 +95,7 @@ MESSAGES = {
     ),
 }
 
-ToolData = MenuResponse | CartResponse
+ToolData = MenuResponse | CartResponse | NudgesResponse
 
 
 class ToolError(BaseModel):

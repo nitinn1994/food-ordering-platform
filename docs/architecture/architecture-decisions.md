@@ -2124,3 +2124,144 @@ three kinds of gap:
   - A web build made outside the Dockerfile without the flag can still
     fall back to localhost.
 
+## ADR-0025 — McDelivery-style theme with original branding and design tokens
+
+**Status:** Accepted · **Date:** 2026-10-01 (mcdelivery-redesign, Phases 1–2)
+· **Decisions:** `docs/features/mcdelivery-redesign/plan.md` OQ1–OQ3, OQ6,
+OQ7, and the Phase 2 scope change (option A)
+
+### Context
+
+The product owner asked for a UI "similar or identical" to McDelivery India.
+Copying its trade dress, logo, typeface ("Speedee"), product names or photos
+is a legal risk. The web app also had no theme at all: per-component CSS
+with hard-coded greys.
+
+### Decision
+
+1. **The layout and colour feel are borrowed. Brand assets are not.** That
+   covers the sticky header, hero, "Our Menu" band, category rail, card grid,
+   sticky cart, and the red, yellow and cream palette. The name
+   (`lib/brand.ts`), the logo and every illustration are original
+   placeholders. The font is a heavy system stack (no download, no
+   network).
+2. **Design tokens** live in `apps/web/src/app/globals.css` as CSS custom
+   properties. CSS modules use them, and a test fails if a brand hex appears
+   in any module. Text/background pairs are checked for 4.5:1 contrast in
+   `globals.test.ts`. The theme is light-only.
+3. **Prices render as INR** (`en-IN`). Whole rupees drop the ".00".
+4. **Menu presentation fields are optional contract fields:** image path,
+   weight, a fixed badge set and featured flags. They are added by additive
+   migration `0002`, and the image is a same-origin path only, checked in
+   zod, Pydantic and a database CHECK.
+5. **Two seeds.** `MENU_SEED` remains the DB-free test menu. `db:seed` loads
+   `DEMO_MENU_SEED` (8 categories, 30 items). The seed never deletes, so a
+   database seeded with the old menu must have its old menu rows removed
+   first (runbook).
+
+### Consequences
+
+- The placeholder brand must be replaced before any public launch.
+- Strict contracts mean `web` and `ai-service` must deploy before (or with)
+  the `commerce-api` that emits the new fields.
+- The category rail keeps filter semantics (`aria-pressed`,
+  `ShowMenuCategory`) rather than scroll-spy (review note 12).
+
+## ADR-0026 — Nudges: rule-based suggestions owned by commerce-api, shown by apps/web
+
+**Status:** Accepted · **Date:** 2026-10-01 (mcdelivery-redesign, Phases 3–4)
+· **Decisions:** `plan.md` "Nudge pattern architecture", OQ4 (a), OQ5 (a)
+
+### Context
+
+The product wanted upsell, cross-sell and time-of-day suggestions ("nudges")
+that are useful without being manipulative. They must respect the boundaries
+in `CLAUDE.md`: the backend owns commerce state, the AI never mutates the
+cart, and the UI never executes arbitrary AI output.
+
+### Decision
+
+1. **commerce-api computes nudges.** `GET /v1/nudges?surface=…[&itemId=…]`
+   evaluates code-defined rules against the caller's server-side cart and
+   the live menu. It is read-only, has no table, and returns at most one
+   nudge. Pipeline: trigger → candidates → eligibility (available, not in
+   the cart, not the focus item) → guardrail (one) → rank (popular, then
+   menu order).
+2. **No manipulative copy.** Headlines are plain and tested against
+   urgency, scarcity, social-proof and discount wording. Badges are a fixed
+   set and cannot claim a discount.
+3. **Accepting is the customer's own add-to-cart.** "Add" calls the
+   existing `POST /v1/cart/items`, and the cart re-reads. Nothing is ever
+   pre-added.
+4. **Session caps are presentation, in apps/web.** At most 3 items per
+   session, each item once, and never again after "No thanks" or "Add".
+   They are kept in `sessionStorage`. Persisting dismissals per owner
+   (OQ4 b) is not done.
+5. **The AI may only reference a nudge.** ai-service's read-only
+   `get_nudges` tool and its `show_nudge` presentation tool produce
+   `ShowNudge { nudgeId }`. `apps/web` re-fetches `GET /v1/nudges` and shows
+   the nudge only if the id matches. Otherwise it ignores the command and
+   logs it. The nudge id format lives in `@contracts/common` because two
+   contract packages carry it.
+
+### Consequences
+
+- A new menu category needs a role in `nudge.roles.ts`, or meal rules
+  ignore it.
+- ai-service cannot see web-side dismissals, so it may offer an item the
+  customer dismissed. The screen then shows nothing (follow-up).
+- Surfaces: the cart card (menu page and `/cart`), the item-detail row, and
+  a toast for post-add and spoken offers. There is none on checkout.
+
+## ADR-0027 — Voice-first shell over the ADR-0023 voice adapter
+
+**Status:** Accepted · **Date:** 2026-10-01 (mcdelivery-redesign, Phase 5) ·
+Extends ADR-0023 (does not supersede it)
+
+### Context
+
+Voice was a button inside the chat box. The product asked for voice-first
+ordering, plus a spoken "yes" to a spoken suggestion. ADR-0023's model
+stays: browser speech, tap-to-talk, a disclosure before the first press,
+and one turn path.
+
+### Decision
+
+1. **One turn for the app.** `AgentTurnProvider` (root layout) holds the
+   single `useAgentTurn`, shared by the chat and the voice sheet. It is
+   still one turn path, one transcript and one turn in flight. A
+   `ChatInput` rendered alone keeps its own turn.
+2. **One voice session per page.** `VoiceShell` owns it. It is reached from
+   a header microphone on every route (wide screens) and a floating button
+   (narrow screens), and shown in a non-modal sheet that Escape closes,
+   returning focus to the opener. With the shell mounted, the chat drops
+   its inline microphone and points to the header.
+3. **The disclosure still comes first.** On first use in a session, the
+   sheet shows the disclosure and an explicit "Start talking". Only that
+   press reaches the microphone. Afterwards the launcher press starts
+   listening.
+4. **Spoken yes/no is a closed word list, outside lib/voice.** When the
+   toast shows a `ShowNudge`, it registers a one-utterance offer. The
+   shell's submit maps "yes/sure/add it…" to that offer's Add, and
+   "no/no thanks…" to its No thanks, both with fixed copy. Anything else is
+   an ordinary turn and ends the window. `lib/voice` is unchanged: its
+   ESLint boundary forbids nudge and cart state, so the plan's
+   "`voiceReducer` holds the window" became "the shell holds it".
+   The offer is tied to the nudge on screen. Any new turn (typed, tapped
+   or spoken), the toast unmounting, or a different nudge replacing it
+   ends the window. A "yes" while a cart change is in flight does nothing,
+   says so, and leaves the offer for one more try (review-report-phases-3-5.md
+   #2, #3).
+5. **Unsupported browsers** get no microphone anywhere, and the chat says
+   to type instead.
+
+### Consequences
+
+- The header microphone works on every route, including `/checkout`. A
+  spoken `add` there changes the cart like any other turn, and the order's
+  cart-version check still applies. The toast is not shown on checkout. A
+  `ShowNudge` issued on another page is not replayed when the menu page
+  next mounts.
+- The suggested prompts in the sheet are taps, so they are sent through the
+  turn and not spoken.
+

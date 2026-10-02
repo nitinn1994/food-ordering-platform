@@ -2,7 +2,10 @@
 
 import { useState, type FormEvent } from "react";
 import { MAX_TURN_MESSAGE_LENGTH } from "@contracts/ui-commands";
-import { useAgentTurn } from "../../lib/agent/useAgentTurn";
+import { useAgentTurn, type AgentTurn } from "../../lib/agent/useAgentTurn";
+import { useSharedAgentTurn } from "../../lib/agent/AgentTurnProvider";
+import { VOICE_UNSUPPORTED_HINT } from "../../lib/voice/voiceMessages";
+import { useVoiceShell } from "../voice/VoiceShell";
 import { VoiceControl, type VoiceAdapters } from "../voice/VoiceControl";
 import { ChatTranscript } from "./ChatTranscript";
 import styles from "./ChatInput.module.css";
@@ -15,7 +18,26 @@ import styles from "./ChatInput.module.css";
 // through the same turn. `voice` is injected by tests only; the browser's own
 // speech APIs are used otherwise.
 export function ChatInput({ voice }: { voice?: VoiceAdapters } = {}) {
+  // mcdelivery-redesign Phase 5: inside the app the turn is the app-wide
+  // one (AgentTurnProvider), shared with the header's voice sheet; rendered
+  // alone, ChatInput keeps its own, exactly as before.
+  const shared = useSharedAgentTurn();
+  return shared ? (
+    <ChatInputView turn={shared} voice={voice} />
+  ) : (
+    <ChatInputWithOwnTurn voice={voice} />
+  );
+}
+
+function ChatInputWithOwnTurn({ voice }: { voice?: VoiceAdapters }) {
   const turn = useAgentTurn();
+  return <ChatInputView turn={turn} voice={voice} />;
+}
+
+function ChatInputView({ turn, voice }: { turn: AgentTurn; voice?: VoiceAdapters }) {
+  // With the voice shell mounted, the one microphone is the header's
+  // (one voice session per page); the chat only points to it.
+  const voiceShell = useVoiceShell();
   const [draft, setDraft] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -49,7 +71,17 @@ export function ChatInput({ voice }: { voice?: VoiceAdapters } = {}) {
           {turn.pending ? "Sending…" : "Send"}
         </button>
       </form>
-      <VoiceControl submit={turn.submit} disabled={turn.pending} adapters={voice} />
+      {voiceShell === null ? (
+        <VoiceControl submit={turn.submit} disabled={turn.pending} adapters={voice} />
+      ) : (
+        <p className={styles.voiceHint}>
+          {voiceShell.supported === null
+            ? null
+            : voiceShell.supported
+              ? "Prefer to talk? Tap the microphone at the top."
+              : VOICE_UNSUPPORTED_HINT}
+        </p>
+      )}
     </div>
   );
 }

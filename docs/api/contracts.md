@@ -228,6 +228,13 @@ the route above is called. The envelope is still not sent.
 
 ## 6. Adopted UI commands
 
+**mcdelivery-redesign Phase 4 adds a sixth, `ShowNudge { nudgeId }`.** It
+carries only a commerce-api nudge id (`@contracts/common`
+`nudgeIdSchema`, `rule:<ruleId>:<itemId>`), never an item, a price or copy.
+`apps/web` shows it only if `GET /v1/nudges` offers a nudge with that id,
+and otherwise ignores it and logs it (ADR-0026). The rest of this section
+describes the original five.
+
 Unchanged in shape since Phase 2, now strict and (for `SearchMenu`) bounded:
 `ShowMenuCategory`, `HighlightItem`, `OpenCartPanel`, `ShowItemDetail`,
 `SearchMenu` (`packages/contracts/ui-commands/src/commands.ts`). Phase 15

@@ -46,3 +46,19 @@ describe("CategoryFilter — AC2 (ARIA correctness)", () => {
     );
   });
 });
+
+describe("CategoryFilter — thumbnails (mcdelivery-redesign Phase 2)", () => {
+  it("uses a category's image as a decorative thumbnail, keeping the button's name", () => {
+    const [first, ...rest] = MENU;
+    const { container } = render(
+      <UiProvider>
+        <CategoryFilter categories={[{ ...first!, imageUrl: "/menu/salad.svg" }, ...rest]} />
+      </UiProvider>,
+    );
+
+    const image = container.querySelector("img");
+    expect(image).toHaveAttribute("src", "/menu/salad.svg");
+    expect(image).toHaveAttribute("alt", "");
+    expect(screen.getByRole("button", { name: first!.name })).toBeInTheDocument();
+  });
+});

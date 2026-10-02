@@ -32,9 +32,9 @@ export async function seedMenu(
     for (const [position, category] of categories.entries()) {
       await trx
         .insertInto("menu_categories")
-        .values({ id: category.id, name: category.name, position })
+        .values({ id: category.id, ...categoryRow(category, position) })
         .onConflict((conflict) =>
-          conflict.column("id").doUpdateSet({ name: category.name, position }),
+          conflict.column("id").doUpdateSet(categoryRow(category, position)),
         )
         .execute();
     }
@@ -52,6 +52,10 @@ export async function seedMenu(
           dietary_tags: [...item.dietaryTags],
           allergens: [...item.allergens],
           calories: item.calories,
+          image_url: item.imageUrl ?? null,
+          weight_grams: item.weightGrams ?? null,
+          badge: item.badge ?? null,
+          featured: [...(item.featured ?? [])],
         };
         await trx
           .insertInto("menu_items")
@@ -61,4 +65,8 @@ export async function seedMenu(
       }
     }
   });
+}
+
+function categoryRow(category: MenuCategory, position: number) {
+  return { name: category.name, position, image_url: category.imageUrl ?? null };
 }

@@ -25,18 +25,18 @@ describe("OrderSummary", () => {
     render(<OrderSummary lines={LINES} totalCents={1940} />);
 
     expect(screen.getByText("Garlic Bread × 2")).toBeInTheDocument();
-    expect(screen.getByText("$11.90")).toBeInTheDocument();
+    expect(screen.getByText("₹11.90")).toBeInTheDocument();
     expect(screen.getByText("Tiramisu × 1")).toBeInTheDocument();
-    expect(screen.getByText("$7.50")).toBeInTheDocument();
+    expect(screen.getByText("₹7.50")).toBeInTheDocument();
   });
 
   it("renders the total in the same format /cart uses (AC5)", () => {
     render(<OrderSummary lines={LINES} totalCents={1940} />);
-    expect(screen.getByText("Total: $19.40")).toBeInTheDocument();
+    expect(screen.getByText("Total: ₹19.40")).toBeInTheDocument();
   });
 
   it("renders no lines and a zero total for an empty order", () => {
     render(<OrderSummary lines={[]} totalCents={0} />);
-    expect(screen.getByText("Total: $0.00")).toBeInTheDocument();
+    expect(screen.getByText("Total: ₹0")).toBeInTheDocument();
   });
 });

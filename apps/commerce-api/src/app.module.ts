@@ -5,6 +5,7 @@ import { DatabaseModule } from "./database/database.module";
 import { HealthModule } from "./health/health.module";
 import { CartModule } from "./modules/cart/cart.module";
 import { MenuModule } from "./modules/menu/menu.module";
+import { NudgesModule } from "./modules/nudges/nudges.module";
 import { OrderModule } from "./modules/order/order.module";
 
 // Dynamic (`forRoot(config)`) rather than a plain `@Module`, because the
@@ -24,6 +25,9 @@ import { OrderModule } from "./modules/order/order.module";
 // is the second, and imports MenuModule itself for item validation and
 // pricing. OrderModule (Phase 9) is the third, and imports CartModule
 // itself to price and consume the cart an order is placed from.
+// NudgesModule (mcdelivery-redesign Phase 3) is the fourth: read-only, it
+// imports MenuModule and CartModule to suggest items from the live menu and
+// the caller's own cart, and owns no table.
 //
 // DatabaseModule (Phase 10) is global, like ConfigModule: the connection
 // every module's infrastructure/ adapters share, built from the same
@@ -41,6 +45,7 @@ export class AppModule {
         MenuModule,
         CartModule,
         OrderModule,
+        NudgesModule,
       ],
     };
   }

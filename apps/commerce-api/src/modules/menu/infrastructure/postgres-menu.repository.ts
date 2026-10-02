@@ -1,11 +1,17 @@
 import { Injectable } from "@nestjs/common";
+import type { Selectable } from "kysely";
 import type { MenuItemId } from "@contracts/common";
 import { deepFreeze } from "../../../common/immutability/deep-freeze";
 import { DatabaseClient } from "../../../database/database-client";
 import type { MenuItemsTable } from "../../../database/database.schema";
 import { toPersistenceError } from "../../../database/persistence.errors";
 import { MenuRepository } from "../domain/menu.repository";
-import type { MenuCategory, MenuItem } from "../domain/menu.types";
+import type {
+  MenuCategory,
+  MenuItem,
+  MenuItemBadge,
+  MenuItemFeature,
+} from "../domain/menu.types";
 
 // The runtime MenuRepository: the menu_categories and menu_items tables
 // (docs/features/phase-10-database-persistence/plan.md §6). Reads on every
@@ -27,7 +33,7 @@ export class PostgresMenuRepository extends MenuRepository {
       const db = this.databaseClient.executor();
       const categories = await db
         .selectFrom("menu_categories")
-        .select(["id", "name"])
+        .select(["id", "name", "image_url"])
         .orderBy("position")
         .execute();
       const items = await db
@@ -48,6 +54,7 @@ export class PostgresMenuRepository extends MenuRepository {
         categories.map((category) => ({
           id: category.id,
           name: category.name,
+          ...(category.image_url !== null && { imageUrl: category.image_url }),
           items: itemsByCategory.get(category.id) ?? [],
         })),
       );
@@ -71,7 +78,7 @@ export class PostgresMenuRepository extends MenuRepository {
   }
 }
 
-function toMenuItem(row: MenuItemsTable): MenuItem {
+function toMenuItem(row: Selectable<MenuItemsTable>): MenuItem {
   return {
     id: row.id,
     categoryId: row.category_id,
@@ -83,5 +90,12 @@ function toMenuItem(row: MenuItemsTable): MenuItem {
     dietaryTags: row.dietary_tags,
     allergens: row.allergens,
     calories: row.calories,
+    // NULL / empty columns (0002) become absent fields, the same shape the
+    // in-memory adapter serves for an item without them. The column checks
+    // restrict badge and featured to the domain's sets.
+    ...(row.image_url !== null && { imageUrl: row.image_url }),
+    ...(row.weight_grams !== null && { weightGrams: row.weight_grams }),
+    ...(row.badge !== null && { badge: row.badge as MenuItemBadge }),
+    ...(row.featured.length > 0 && { featured: row.featured as MenuItemFeature[] }),
   };
 }

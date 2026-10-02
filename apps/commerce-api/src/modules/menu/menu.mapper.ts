@@ -22,6 +22,12 @@ export function toMenuItemResponse(item: MenuItem): MenuItemResponse {
     dietaryTags: [...item.dietaryTags],
     allergens: [...item.allergens],
     calories: item.calories,
+    // Optional presentation fields: sent only when the item has them.
+    ...(item.imageUrl !== undefined && { imageUrl: item.imageUrl }),
+    ...(item.weightGrams !== undefined && { weightGrams: item.weightGrams }),
+    ...(item.badge !== undefined && { badge: item.badge }),
+    ...(item.featured !== undefined &&
+      item.featured.length > 0 && { featured: [...item.featured] }),
   };
 }
 
@@ -29,6 +35,7 @@ function toMenuCategoryResponse(category: MenuCategory): MenuCategoryResponse {
   return {
     id: category.id,
     name: category.name,
+    ...(category.imageUrl !== undefined && { imageUrl: category.imageUrl }),
     items: category.items.map(toMenuItemResponse),
   };
 }

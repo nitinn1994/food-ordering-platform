@@ -1,0 +1,27 @@
+.band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin: var(--space-6) 0 var(--space-5);
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 2.75rem);
+}
+
+.search {
+  flex: 0 1 380px;
+}
+
+@media (max-width: 640px) {
+  .band {
+    margin: var(--space-5) 0 var(--space-4);
+  }
+
+  .search {
+    flex-basis: 100%;
+  }
+}

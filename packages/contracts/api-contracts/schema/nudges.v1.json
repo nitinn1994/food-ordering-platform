@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:food-ordering-platform:contracts:api-contracts:nudges:v1",
+  "type": "object",
+  "properties": {
+    "nudges": {
+      "maxItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "maxLength": 140,
+            "pattern": "^rule:[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "complete-meal",
+              "pairing",
+              "time-of-day",
+              "new-launch"
+            ]
+          },
+          "surface": {
+            "type": "string",
+            "enum": [
+              "cart",
+              "post-add",
+              "item-detail",
+              "voice"
+            ]
+          },
+          "itemId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "itemName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "headline": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "priceCents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "imageUrl": {
+            "type": "string",
+            "maxLength": 200,
+            "pattern": "^(?:\\/[a-z0-9][a-z0-9-]*)+\\.(?:svg|png|jpe?g|webp)$"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "surface",
+          "itemId",
+          "itemName",
+          "headline",
+          "priceCents"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "nudges"
+  ],
+  "additionalProperties": false
+}

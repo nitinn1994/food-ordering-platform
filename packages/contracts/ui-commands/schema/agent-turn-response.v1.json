@@ -125,6 +125,25 @@
                   "query"
                 ],
                 "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "ShowNudge"
+                  },
+                  "nudgeId": {
+                    "type": "string",
+                    "maxLength": 140,
+                    "pattern": "^rule:[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$"
+                  }
+                },
+                "required": [
+                  "type",
+                  "nudgeId"
+                ],
+                "additionalProperties": false
               }
             ]
           }

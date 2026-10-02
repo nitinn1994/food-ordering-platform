@@ -37,7 +37,7 @@ describe("ItemDetailPanel — AC11", () => {
 
     const panel = screen.getByRole("region", { name: "Tiramisu details" });
     expect(panel).toHaveTextContent(/espresso-soaked ladyfingers/i);
-    expect(panel).toHaveTextContent("$7.50");
+    expect(panel).toHaveTextContent("₹7.50");
     expect(panel).toHaveTextContent("450 cal");
     expect(panel).toHaveTextContent("vegetarian");
     expect(panel).toHaveTextContent("gluten");

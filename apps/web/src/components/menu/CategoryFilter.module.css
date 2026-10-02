@@ -1,20 +1,87 @@
 .filter {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
 }
 
 .filter button {
-  padding: 0.4rem 0.9rem;
-  border: 1px solid #ccc;
-  border-radius: 999px;
-  background: #fff;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 64px;
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-right: 4px solid transparent;
+  background: none;
+  color: var(--color-muted);
+  font-weight: 700;
+  text-align: left;
   cursor: pointer;
 }
 
-.active {
-  background: #222;
-  color: #fff;
-  border-color: #222;
+.filter button:hover {
+  color: var(--color-text);
+}
+
+.thumb {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--color-surface-warm);
+  color: var(--color-accent-strong);
+  font-size: 1.25rem;
+  font-weight: var(--font-weight-heavy);
+}
+
+.thumb img {
+  width: 40px;
+  height: auto;
+}
+
+.name {
+  line-height: 1.2;
+}
+
+.filter .active {
+  border-right-color: var(--color-brand-yellow);
+  color: var(--color-text);
+}
+
+.active .thumb {
+  background: var(--color-brand-yellow);
+  color: var(--color-text);
+}
+
+@media (max-width: 1023px) {
+  .filter {
+    display: flex;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .filter button {
+    flex: none;
+    flex-direction: column;
+    gap: var(--space-1);
+    width: auto;
+    min-width: 84px;
+    padding: var(--space-2);
+    border-right: none;
+    border-bottom: 4px solid transparent;
+    font-size: 0.85rem;
+    text-align: center;
+  }
+
+  .filter .active {
+    border-bottom-color: var(--color-brand-yellow);
+  }
 }

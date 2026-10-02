@@ -22,6 +22,7 @@ from ai_service.contracts.agent_intents import AgentIntent
 from ai_service.contracts.api_contracts import (
     AddCartItemRequest,
     CartResponse,
+    MenuItem,
     MenuResponse,
     UpdateCartItemRequest,
 )
@@ -147,6 +148,7 @@ VALID_COMMANDS: list[dict[str, Any]] = [
     {"type": "OpenCartPanel", "open": True},
     {"type": "ShowItemDetail", "itemId": "garlic-bread"},
     {"type": "SearchMenu", "query": ""},
+    {"type": "ShowNudge", "nudgeId": "rule:complete-meal-side:fries-medium"},
 ]
 
 INVALID_COMMANDS: list[Any] = [
@@ -351,3 +353,54 @@ def test_turn_request_agrees_with_its_schema(body: dict[str, Any], valid: bool) 
     else:
         with pytest.raises(ValidationError):
             AgentTurnRequest.model_validate(body)
+
+
+def test_menu_item_accepts_the_optional_presentation_fields() -> None:
+    # mcdelivery-redesign Phase 2: generated from the updated menu contract.
+    base = {
+        "id": "fries-medium",
+        "categoryId": "fries-sides",
+        "name": "Fries (Medium)",
+        "description": "Golden, salted fries.",
+        "longDescription": "Thin-cut potato fries.",
+        "priceCents": 10900,
+        "available": True,
+        "dietaryTags": ["vegetarian"],
+        "allergens": [],
+        "calories": 320,
+    }
+    plain = MenuItem.model_validate(base)
+    assert plain.imageUrl is None and plain.featured is None
+
+    rich = MenuItem.model_validate(
+        {
+            **base,
+            "imageUrl": "/menu/fries.svg",
+            "weightGrams": 110,
+            "badge": "bestseller",
+            "featured": ["popular", "new-launch"],
+        }
+    )
+    assert rich.model_dump(mode="json", exclude_none=True)["featured"] == [
+        "popular",
+        "new-launch",
+    ]
+
+
+def test_menu_item_rejects_an_off_origin_image() -> None:
+    with pytest.raises(ValidationError):
+        MenuItem.model_validate(
+            {
+                "id": "x",
+                "categoryId": "y",
+                "name": "X",
+                "description": "d",
+                "longDescription": "ld",
+                "priceCents": 1,
+                "available": True,
+                "dietaryTags": [],
+                "allergens": [],
+                "calories": 0,
+                "imageUrl": "https://example.com/a.svg",
+            }
+        )

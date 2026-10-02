@@ -14,7 +14,7 @@ describe("OrderConfirmation", () => {
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
     expect(screen.getByText("5551234567")).toBeInTheDocument();
     expect(screen.getByText("Tiramisu × 1")).toBeInTheDocument();
-    expect(screen.getByText("Total: $7.50")).toBeInTheDocument();
+    expect(screen.getByText("Total: ₹7.50")).toBeInTheDocument();
   });
 
   it("omits the email row when no email was provided", () => {

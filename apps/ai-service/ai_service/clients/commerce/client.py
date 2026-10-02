@@ -1,7 +1,7 @@
 """The one way this service talks to commerce-api (Phase 14 plan.md
 sections 9-12).
 
-Five typed operations, one per commerce-api route a tool needs, and nothing
+Six typed operations, one per commerce-api route a tool needs, and nothing
 else: no public method takes a URL, a path, an HTTP method or headers
 (tests/test_commerce_client.py pins the public surface). The base URL is set
 once, from ``COMMERCE_API_URL``, on the ``httpx.AsyncClient`` this class is
@@ -31,6 +31,8 @@ from ai_service.contracts.api_contracts import (
     AddCartItemRequest,
     CartResponse,
     MenuResponse,
+    NudgesResponse,
+    Surface,
     UpdateCartItemRequest,
 )
 from ai_service.core.request_context import correlation_id_var
@@ -40,6 +42,8 @@ MENU_ROUTE = "/v1/menu"
 CART_ROUTE = "/v1/cart"
 CART_ITEMS_ROUTE = "/v1/cart/items"
 CART_ITEM_ROUTE = "/v1/cart/items/{item_id}"
+# mcdelivery-redesign Phase 4: commerce-api's read-only suggestions.
+NUDGES_ROUTE = "/v1/nudges"
 
 CORRELATION_ID_HEADER = "X-Correlation-Id"
 
@@ -116,6 +120,20 @@ class CommerceClient:
             "DELETE", _cart_item_route(item_id), CartResponse, write=True
         )
 
+    async def get_nudges(
+        self, surface: Surface | str, item_id: str | None = None
+    ) -> NudgesResponse:
+        """At most one suggestion for ``surface``, computed by commerce-api
+        from the customer's own cart. Read-only. ``item_id`` is checked
+        against the contract's id pattern before it goes into the query, and
+        httpx encodes both values, so neither can add a parameter."""
+        params = {"surface": _valid_surface(surface)}
+        if item_id is not None:
+            params["itemId"] = _valid_item_id(item_id)
+        return await self._send(
+            "GET", NUDGES_ROUTE, NudgesResponse, write=False, params=params
+        )
+
     async def _send[ResponseT: BaseModel](
         self,
         method: Method,
@@ -124,6 +142,7 @@ class CommerceClient:
         *,
         write: bool,
         body: dict[str, Any] | None = None,
+        params: dict[str, str] | None = None,
     ) -> ResponseT:
         headers: dict[str, str] = {}
         correlation_id = correlation_id_var.get()
@@ -133,7 +152,7 @@ class CommerceClient:
         # can name the URL, and nothing here may carry it into a log.
         try:
             response = await self._http.request(
-                method, route, json=body, headers=headers
+                method, route, json=body, headers=headers, params=params
             )
         except _NOT_SENT:
             raise CommerceUnavailableError() from None
@@ -151,12 +170,22 @@ class CommerceClient:
         return _parse(response, model)
 
 
-def _cart_item_route(item_id: str) -> str:
+def _valid_item_id(item_id: str) -> str:
     try:
-        valid = _ITEM_ID.validate_python(item_id, strict=True)
+        return _ITEM_ID.validate_python(item_id, strict=True)
     except ValidationError:
         raise InvalidCommerceArgumentError() from None
-    return CART_ITEM_ROUTE.format(item_id=valid)
+
+
+def _cart_item_route(item_id: str) -> str:
+    return CART_ITEM_ROUTE.format(item_id=_valid_item_id(item_id))
+
+
+def _valid_surface(surface: Surface | str) -> str:
+    try:
+        return Surface(surface).value
+    except ValueError:
+        raise InvalidCommerceArgumentError() from None
 
 
 def _request_body(model: type[BaseModel], **fields: Any) -> dict[str, Any]:

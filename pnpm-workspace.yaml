@@ -9,3 +9,9 @@ allowBuilds:
 # advisories (fixed in >=8.5.23). Scoped to next's own postcss only.
 overrides:
   "next>postcss": ^8.5.23
+# mcdelivery-redesign final review: brace-expansion (dev-only, through
+# eslint / typescript-eslint → minimatch) carries GHSA-6j4f-fj2g-mc7p and
+# GHSA-qhr7-859c-m2p7 (HIGH). Moved to the patched release in the same
+# major (1.1.18 → ≥1.1.20, 5.0.9 → ≥5.0.11), so minimatch's API is unchanged.
+  "brace-expansion@<1.1.20": ^1.1.20
+  "brace-expansion@>=4.0.0 <5.0.11": ^5.0.11

@@ -1,6 +1,6 @@
 """The presentation tool allowlist (Phase 15 plan.md section 6, OD2).
 
-Five tools, one per ``@contracts/ui-commands`` command, declared literally.
+Six tools, one per ``@contracts/ui-commands`` command, declared literally.
 Like the Commerce registry: no discovery, no runtime registration, and a
 read-only mapping. Nothing is added beyond the existing contract: no
 ``OpenCheckout`` (a declined candidate) and never ``ShowOrderConfirmation``
@@ -24,12 +24,18 @@ from ai_service.contracts.ui_commands import (
     SearchMenu,
     ShowItemDetail,
     ShowMenuCategory,
+    ShowNudge,
 )
 
 type CommandModel = (
-    ShowMenuCategory | HighlightItem | OpenCartPanel | ShowItemDetail | SearchMenu
+    ShowMenuCategory
+    | HighlightItem
+    | OpenCartPanel
+    | ShowItemDetail
+    | SearchMenu
+    | ShowNudge
 )
-# The same five classes as a tuple, for isinstance checks that narrow to
+# The same six classes as a tuple, for isinstance checks that narrow to
 # CommandModel. tests/test_ui_command_tools.py pins both to the generated
 # union, so neither can drift from the contract.
 COMMAND_CLASSES = (
@@ -38,6 +44,7 @@ COMMAND_CLASSES = (
     OpenCartPanel,
     ShowItemDetail,
     SearchMenu,
+    ShowNudge,
 )
 
 # The same rules as the Commerce tool inputs (tools/schemas.py): strict (no
@@ -116,6 +123,14 @@ def build_presentation_registry() -> Mapping[str, PresentationToolDefinition]:
             "Filter the menu on screen by a search phrase of up to 200 "
             "characters. An empty query clears the search.",
             SearchMenu,
+        ),
+        _definition(
+            "show_nudge",
+            "Show the customer one suggestion from get_nudges. nudgeId must be "
+            "the id get_nudges returned, exactly; the screen shows the "
+            "ordering service's own suggestion for it, or nothing. It never "
+            "adds the item: only the customer can.",
+            ShowNudge,
         ),
     )
     return MappingProxyType({d.name: d for d in definitions})

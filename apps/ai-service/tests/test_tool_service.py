@@ -17,7 +17,11 @@ from ai_service.clients.commerce import (
     CommerceClient,
     InvalidCommerceArgumentError,
 )
-from ai_service.contracts.api_contracts import CartResponse, MenuResponse
+from ai_service.contracts.api_contracts import (
+    CartResponse,
+    MenuResponse,
+    NudgesResponse,
+)
 from ai_service.tools.registry import ToolDefinition
 from ai_service.tools.results import (
     MESSAGES,
@@ -30,6 +34,7 @@ from tests.commerce_fakes import (
     CART,
     EMPTY_CART,
     MENU,
+    NUDGES,
     FakeCommerce,
     contract_error,
     json_response,
@@ -62,6 +67,20 @@ TOOLS: dict[str, tuple[dict[str, Any], str, str, Any, Any]] = {
         None,
         EMPTY_CART,
     ),
+    # mcdelivery-redesign Phase 4. The surface arrives as the enum's string,
+    # exactly as a model sends it.
+    "get_nudges": (
+        {"surface": "voice", "itemId": "tiramisu"},
+        "GET",
+        "/v1/nudges",
+        None,
+        NUDGES,
+    ),
+}
+
+RESOURCE_MODELS: dict[str, type[MenuResponse | NudgesResponse]] = {
+    "get_menu": MenuResponse,
+    "get_nudges": NudgesResponse,
 }
 
 
@@ -89,7 +108,7 @@ def test_each_tool_calls_its_one_route_and_returns_the_resource(name: str) -> No
 
     assert result.ok
     assert result.error is None
-    assert isinstance(result.data, MenuResponse if name == "get_menu" else CartResponse)
+    assert isinstance(result.data, RESOURCE_MODELS.get(name, CartResponse))
     assert json.loads(result.to_content()) == {"ok": True, "data": response_body}
     assert [(r.method, r.url.path) for r in fake.requests] == [(method, path)]
     assert fake.request_json() == request_body
@@ -135,6 +154,9 @@ def test_unknown_tool_is_never_executed(name: str) -> None:
         ("get_cart", "not an object", None),
         ("get_cart", ["a"], None),
         ("remove_cart_item", None, None),
+        ("get_nudges", {"surface": "checkout"}, "surface"),
+        ("get_nudges", {"surface": "voice", "itemId": "x&y"}, "itemId"),
+        ("get_nudges", {}, "surface"),
     ],
 )
 def test_invalid_arguments_never_reach_commerce(

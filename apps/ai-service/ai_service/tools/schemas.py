@@ -14,7 +14,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from ai_service.contracts.api_contracts import AddCartItemRequest
+from ai_service.contracts.api_contracts import AddCartItemRequest, Surface
 
 _CONTRACT_FIELDS = AddCartItemRequest.model_fields
 
@@ -54,3 +54,20 @@ class SetCartItemQuantityInput(ToolInput):
 
 class RemoveCartItemInput(ToolInput):
     itemId: ItemId
+
+
+class GetNudgesInput(ToolInput):
+    """mcdelivery-redesign Phase 4. ``surface`` is the contract's own enum;
+    ``itemId`` (optional) is the item just added or being looked at."""
+
+    # strict=False on this field only: the model sends the enum's string
+    # value ("voice"), which strict mode would refuse for an Enum. Any value
+    # outside the contract's four is still rejected.
+    surface: Annotated[
+        Surface,
+        Field(
+            strict=False,
+            description='Where the suggestion is for; use "voice" in a conversation.',
+        ),
+    ]
+    itemId: ItemId | None = None

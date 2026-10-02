@@ -4,6 +4,7 @@ import { SiteNav } from "./SiteNav";
 import { useCart } from "../../lib/state/cartStore";
 import { EMPTY_CART, errorReply, pricedCart, renderWithCart } from "../../test/cart";
 import { deferred, jsonResponse } from "../../test/fetchStub";
+import { BRAND_NAME } from "../../lib/brand";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
@@ -72,5 +73,39 @@ describe("SiteNav", () => {
     await renderWithCart(<SiteNav />, { cart: errorReply(500, "INTERNAL_ERROR") });
 
     expect(await screen.findByRole("link", { name: "Cart" })).toBeInTheDocument();
+  });
+});
+
+describe("SiteNav — header (mcdelivery-redesign Phase 1)", () => {
+  it("links the placeholder brand home", async () => {
+    await renderWithCart(<SiteNav />, { cart: EMPTY_CART });
+
+    expect(screen.getByRole("link", { name: `${BRAND_NAME} home` })).toHaveAttribute(
+      "href",
+      "/",
+    );
+  });
+
+  it.each([
+    "Delivery (coming soon)",
+    "Offers (coming soon)",
+    "Restaurants Nearby (coming soon)",
+    "Account (coming soon)",
+  ])("renders %s as a focusable, unavailable placeholder", async (name) => {
+    await renderWithCart(<SiteNav />, { cart: EMPTY_CART });
+
+    const placeholder = screen.getByRole("button", { name });
+    expect(placeholder).toHaveAttribute("aria-disabled", "true");
+    expect(placeholder).not.toBeDisabled();
+  });
+
+  it("renders the location pill as a placeholder named by its visible text", async () => {
+    await renderWithCart(<SiteNav />, { cart: EMPTY_CART });
+
+    expect(
+      screen.getByRole("button", {
+        name: "Set your location to see delivery options near you, Now (coming soon)",
+      }),
+    ).toHaveAttribute("aria-disabled", "true");
   });
 });

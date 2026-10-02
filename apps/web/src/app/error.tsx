@@ -2,6 +2,7 @@
 
 import { startTransition } from "react";
 import { useRouter } from "next/navigation";
+import { BRAND_NAME } from "../lib/brand";
 import styles from "./page.module.css";
 
 // Next.js renders this automatically if page.tsx's async work (getMenu())
@@ -36,7 +37,7 @@ export default function Error({
 
   return (
     <main className={styles.main}>
-      <h1>Food Ordering Platform</h1>
+      <h1>{BRAND_NAME}</h1>
       <p role="alert">
         We couldn&apos;t load this page right now. Please try again.
       </p>

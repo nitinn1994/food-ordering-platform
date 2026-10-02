@@ -152,3 +152,55 @@ describe("menuItemParamsSchema", () => {
     ).toBe(false);
   });
 });
+
+describe("menuItemSchema — presentation fields (mcdelivery-redesign Phase 2)", () => {
+  const WITH_PRESENTATION = {
+    ...VALID_ITEM,
+    imageUrl: "/menu/dessert.svg",
+    weightGrams: 120,
+    badge: "bestseller",
+    featured: ["popular", "deal"],
+  };
+
+  it("accepts an item with every presentation field", () => {
+    expect(menuItemSchema.safeParse(WITH_PRESENTATION).success).toBe(true);
+  });
+
+  it("keeps every presentation field optional", () => {
+    expect(menuItemSchema.safeParse(VALID_ITEM).success).toBe(true);
+  });
+
+  it.each([
+    "https://example.com/menu/burger.svg",
+    "//example.com/burger.svg",
+    "/menu/../secret.svg",
+    "menu/burger.svg",
+    "/menu/burger.gif",
+    "/menu/Burger.svg",
+    "javascript:alert(1)",
+  ])("rejects the image path %s", (imageUrl) => {
+    expect(menuItemSchema.safeParse({ ...VALID_ITEM, imageUrl }).success).toBe(false);
+  });
+
+  it("rejects a badge outside the fixed set", () => {
+    expect(menuItemSchema.safeParse({ ...VALID_ITEM, badge: "20-off" }).success).toBe(false);
+  });
+
+  it("rejects an unknown feature and a non-positive weight", () => {
+    expect(menuItemSchema.safeParse({ ...VALID_ITEM, featured: ["for-you"] }).success).toBe(false);
+    expect(menuItemSchema.safeParse({ ...VALID_ITEM, weightGrams: 0 }).success).toBe(false);
+  });
+});
+
+describe("menuCategorySchema — imageUrl (mcdelivery-redesign Phase 2)", () => {
+  it("accepts an optional same-origin image path", () => {
+    const category = { id: "desserts", name: "Desserts", items: [] };
+    expect(menuCategorySchema.safeParse(category).success).toBe(true);
+    expect(
+      menuCategorySchema.safeParse({ ...category, imageUrl: "/menu/dessert.svg" }).success,
+    ).toBe(true);
+    expect(
+      menuCategorySchema.safeParse({ ...category, imageUrl: "http://x.test/a.svg" }).success,
+    ).toBe(false);
+  });
+});

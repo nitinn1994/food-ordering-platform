@@ -132,7 +132,8 @@ answers 200 with the model's explanation.
 
 ### 3.2 Tools (Phase 14)
 
-The agent can call exactly these five tools, a fixed allowlist
+The agent can call exactly these six tools (`get_nudges` since
+mcdelivery-redesign Phase 4), a fixed allowlist
 (`tools/registry.py`). Each one validates strict arguments and makes one call
 to one fixed commerce-api route through the Commerce API client
 (`clients/commerce/`), which is the only code in this service that speaks
@@ -142,6 +143,7 @@ HTTP.
 | --- | --- | --- | --- |
 | `get_menu` | read | none | `GET /v1/menu` |
 | `get_cart` | read | none | `GET /v1/cart` |
+| `get_nudges` | read | `surface` (`cart` / `post-add` / `item-detail` / `voice`), optional `itemId` | `GET /v1/nudges` (query string) |
 | `add_cart_item` | write | `itemId`, `quantity` (1–99) | `POST /v1/cart/items` |
 | `set_cart_item_quantity` | write | `itemId`, `quantity` (1–99), an absolute set | `PATCH /v1/cart/items/{itemId}` |
 | `remove_cart_item` | write | `itemId` | `DELETE /v1/cart/items/{itemId}` |
@@ -149,7 +151,10 @@ HTTP.
 - **Arguments are strict.** Unknown keys are rejected, there is no type
   coercion, and `itemId` and `quantity` carry the contract's own constraints
   (generated from `packages/contracts/api-contracts`). No argument can name a
-  URL, a route, an HTTP method, a header, a cart, an owner or a price.
+  URL, a route, an HTTP method, a header, a cart, an owner or a price. The
+  one exception to "no coercion" is `get_nudges`' `surface`: the model sends
+  the enum's string value, so that field accepts it. Any value outside the
+  contract's four is still rejected.
 - **No order tools.** Placing or reading an order is not available to the
   agent (ADR-0021). The prompt sends the customer to checkout.
 - **commerce-api decides.** Nothing in this service checks availability,
@@ -202,6 +207,14 @@ records one UI command for the response.
 | `open_cart_panel` | `open` (boolean) | `OpenCartPanel` |
 | `show_item_detail` | `itemId` (slug, 1–64) | `ShowItemDetail` |
 | `search_menu` | `query` (0–200 characters) | `SearchMenu` |
+| `show_nudge` | `nudgeId` (`rule:<rule>:<item>`) | `ShowNudge` (mcdelivery-redesign Phase 4) |
+
+`show_nudge` carries only the id of a nudge `get_nudges` returned.
+`apps/web` fetches `GET /v1/nudges` itself and shows the nudge only if
+commerce-api offers one with that id. After a successful `add <item>`, the
+simulated model calls `get_nudges` (surface `voice`), then opens the cart
+and calls `show_nudge`. Its reply gains the nudge's headline only if
+`show_nudge` succeeded, so what is said always matches what is shown.
 
 - **Arguments are the command's fields without `type`**, taken from the
   generated model. They are strict: unknown keys are rejected and there is

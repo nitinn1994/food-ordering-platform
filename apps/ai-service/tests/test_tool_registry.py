@@ -16,6 +16,8 @@ from tests.commerce_fakes import FakeCommerce
 EXPECTED_CATEGORIES = {
     "get_menu": "read",
     "get_cart": "read",
+    # mcdelivery-redesign Phase 4.
+    "get_nudges": "read",
     "add_cart_item": "write",
     "set_cart_item_quantity": "write",
     "remove_cart_item": "write",
@@ -61,7 +63,8 @@ def test_no_schema_accepts_extra_or_transport_parameters(
 
     assert parameters["type"] == "object"
     assert parameters["additionalProperties"] is False
-    assert set(parameters.get("properties", {})) <= {"itemId", "quantity"}
+    # surface (get_nudges) is the contract's fixed enum, not a free value.
+    assert set(parameters.get("properties", {})) <= {"itemId", "quantity", "surface"}
 
 
 def test_service_binds_what_it_executes() -> None:

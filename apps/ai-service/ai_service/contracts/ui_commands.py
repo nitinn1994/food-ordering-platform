@@ -57,13 +57,37 @@ class SearchMenu(BaseModel):
     query: Annotated[str, Field(max_length=200)]
 
 
+class ShowNudge(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    type: Literal["ShowNudge"]
+    nudgeId: Annotated[
+        str,
+        Field(
+            max_length=140,
+            pattern="^rule:[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$",
+        ),
+    ]
+
+
 class UiCommand(
     RootModel[
-        ShowMenuCategory | HighlightItem | OpenCartPanel | ShowItemDetail | SearchMenu
+        ShowMenuCategory
+        | HighlightItem
+        | OpenCartPanel
+        | ShowItemDetail
+        | SearchMenu
+        | ShowNudge
     ]
 ):
     root: Annotated[
-        ShowMenuCategory | HighlightItem | OpenCartPanel | ShowItemDetail | SearchMenu,
+        ShowMenuCategory
+        | HighlightItem
+        | OpenCartPanel
+        | ShowItemDetail
+        | SearchMenu
+        | ShowNudge,
         Field(title="UiCommand"),
     ]
 

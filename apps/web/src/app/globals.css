@@ -1,16 +1,121 @@
+/* Design tokens — docs/features/mcdelivery-redesign/requirements.md
+   ("Reference design"), AC-U1. Component CSS modules use these custom
+   properties rather than their own brand hex values. Light-only, like the
+   reference (OQ7). */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
+
+  /* Brand */
+  --color-brand-red: #da0005;
+  --color-brand-red-dark: #b00004;
+  --color-brand-yellow: #ffbc0b;
+  --color-brand-yellow-dark: #f2ad00;
+
+  /* Surfaces and text */
+  --color-bg: #fbf6f0;
+  --color-surface: #ffffff;
+  --color-surface-warm: #fff8e6;
+  --color-text: #2b2b2b;
+  --color-on-brand: #ffffff;
+  --color-muted: #6d6d6d;
+  --color-accent: #a87c4f;
+  --color-accent-strong: #7d5630;
+  --color-border: #ecdcc8;
+  --color-border-strong: #d8c3a8;
+
+  /* Status */
+  --color-veg: #1b8a3a;
+  --color-nonveg: #b00004;
+  --color-danger: #b00004;
+  --color-success: #1b7a36;
+  --color-focus: #1a5fb4;
+  --color-highlight: #fff1c2;
+
+  /* Shape */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+
+  /* Elevation */
+  --shadow-card: 0 2px 10px rgb(43 43 43 / 6%);
+  --shadow-raised: 0 6px 20px rgb(43 43 43 / 12%);
+  --shadow-header: 0 2px 8px rgb(0 0 0 / 8%);
+
+  /* Type — a heavy system stack; the reference's typeface is proprietary
+     (OQ6). */
+  --font-sans:
+    "Helvetica Neue", Helvetica, Arial, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --font-weight-heavy: 800;
+
+  /* Layout */
+  --header-height: 72px;
+  --content-max-width: 1320px;
+  /* The fixed cart bar on narrow screens (CartPanel.module.css), and what
+     is laid out around it — one value, so they cannot drift
+     (review-report.md finding 2). */
+  --cart-bar-height: 64px;
 }
 
 * {
   box-sizing: border-box;
 }
 
+/* Keep a focused or scrolled-to element clear of the sticky header (WCAG
+   2.4.11), and on narrow screens of the fixed cart bar too. */
+html {
+  scroll-padding-top: calc(var(--header-height) + var(--space-4));
+}
+
+@media (max-width: 1023px) {
+  html {
+    scroll-padding-bottom: calc(var(--cart-bar-height) + var(--space-4));
+  }
+}
+
 body {
   margin: 0;
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  line-height: 1.45;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: var(--font-weight-heavy);
+  line-height: 1.2;
+}
+
+a {
+  color: var(--color-accent-strong);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+input {
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 2px;
 }

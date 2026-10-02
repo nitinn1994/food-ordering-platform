@@ -30,6 +30,15 @@ export const menuCategoryIdSchema = z
   .max(MAX_ID_LENGTH)
   .regex(SLUG_ID_PATTERN);
 
+// Identifies one commerce-api nudge: `rule:<ruleId>:<itemId>`
+// (docs/features/mcdelivery-redesign/plan.md, Phases 3–4). Shared because
+// two packages carry it: api-contracts' GET /v1/nudges response, and
+// ui-commands' ShowNudge, which may only refer to a nudge, never carry one.
+export const MAX_NUDGE_ID_LENGTH = 140;
+const NUDGE_ID_PATTERN = /^rule:[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export const nudgeIdSchema = z.string().max(MAX_NUDGE_ID_LENGTH).regex(NUDGE_ID_PATTERN);
+
 // Identifies one conversational turn. A single turn fans out into several UI
 // commands and possibly several intents; without this field the accepted /
 // rejected command log can record what happened but not what it belonged to.
@@ -51,3 +60,4 @@ export type MenuItemId = z.infer<typeof menuItemIdSchema>;
 export type MenuCategoryId = z.infer<typeof menuCategoryIdSchema>;
 export type CorrelationId = z.infer<typeof correlationIdSchema>;
 export type IdempotencyKey = z.infer<typeof idempotencyKeySchema>;
+export type NudgeId = z.infer<typeof nudgeIdSchema>;

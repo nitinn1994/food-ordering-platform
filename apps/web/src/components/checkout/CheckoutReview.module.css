@@ -55,5 +55,20 @@
 
 .error {
   margin: 0;
-  color: #a00;
+  color: var(--color-danger);
+}
+
+.actions button {
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-brand-yellow);
+  color: var(--color-text);
+  font-weight: var(--font-weight-heavy);
+  cursor: pointer;
+}
+
+.actions button:disabled {
+  background: var(--color-border);
+  color: var(--color-muted);
+  cursor: not-allowed;
 }

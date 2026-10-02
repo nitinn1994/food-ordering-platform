@@ -1,0 +1,56 @@
+.hero {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 320px);
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-6);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 85% 30%, rgb(255 255 255 / 18%), transparent 45%),
+    var(--color-brand-red);
+  color: var(--color-on-brand);
+  overflow: hidden;
+}
+
+.copy p {
+  margin: 0;
+}
+
+/* White, not brand yellow: yellow on the red banner is 3.13:1, below the
+   4.5:1 small text needs (review-report.md finding 1). */
+.eyebrow {
+  color: var(--color-on-brand);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.85rem;
+}
+
+.copy .headline {
+  margin-top: var(--space-2);
+  font-size: clamp(1.6rem, 3.5vw, 2.6rem);
+  font-weight: var(--font-weight-heavy);
+  line-height: 1.1;
+}
+
+.copy .tagline {
+  margin-top: var(--space-3);
+  font-size: 1.05rem;
+}
+
+.art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+@media (max-width: 640px) {
+  .hero {
+    grid-template-columns: 1fr;
+    padding: var(--space-4);
+  }
+
+  .art {
+    display: none;
+  }
+}

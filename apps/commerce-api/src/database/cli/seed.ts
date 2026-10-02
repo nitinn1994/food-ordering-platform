@@ -1,6 +1,9 @@
-// `pnpm --filter commerce-api db:seed` — loads the menu seed into the
-// database DATABASE_URL names (.env), and never prints the connection
-// string. Run `db:migrate` first.
+// `pnpm --filter commerce-api db:seed` — loads the demo menu
+// (DEMO_MENU_SEED, docs/features/mcdelivery-redesign/plan.md Phase 2) into
+// the database DATABASE_URL names (.env), and never prints the connection
+// string. Run `db:migrate` first. MENU_SEED, the smaller menu the tests
+// assert, is not what this loads; seedMenu() still defaults to it for the
+// DB test suite.
 //
 // With NODE_ENV=production it refuses to run unless given
 // --allow-production (docs/features/phase-10-database-persistence/plan.md
@@ -12,6 +15,7 @@
 import { EnvValidationError, parseEnv } from "../../config/env.schema";
 import { createDatabase } from "../database-client";
 import { seedMenu } from "../menu-seed";
+import { DEMO_MENU_SEED } from "../../modules/menu/infrastructure/demo-menu.seed";
 import { describeDriverError } from "../persistence.errors";
 
 async function main(): Promise<void> {
@@ -35,7 +39,7 @@ async function main(): Promise<void> {
 
   const db = createDatabase(config);
   try {
-    await seedMenu(db);
+    await seedMenu(db, DEMO_MENU_SEED);
     const [categories, items] = await Promise.all([
       db.selectFrom("menu_categories").select(db.fn.countAll<number>().as("n")).executeTakeFirstOrThrow(),
       db.selectFrom("menu_items").select(db.fn.countAll<number>().as("n")).executeTakeFirstOrThrow(),
@@ -44,7 +48,19 @@ async function main(): Promise<void> {
   } catch (error) {
     // Only the code — a driver error's message or detail could quote row
     // values (persistence.errors.ts).
-    const { code } = describeDriverError(error);
+    const { code, constraint } = describeDriverError(error);
+    if (code === "23505" && constraint === "menu_categories_position_key") {
+      // A menu from an earlier seed is in the way: the seed never deletes,
+      // and the demo menu reuses category positions 0…n (review-report.md
+      // finding 4; docs/operations/production-runbook.md).
+      console.error(
+        "Seeding failed: an earlier menu's categories already hold these positions, " +
+          "and the seed never deletes. Nothing was written. Remove the old menu first " +
+          "(docs/development/getting-started.md, docs/operations/production-runbook.md).",
+      );
+      process.exitCode = 1;
+      return;
+    }
     console.error(
       error instanceof Error && code === undefined
         ? `Seeding failed: ${error.message}`

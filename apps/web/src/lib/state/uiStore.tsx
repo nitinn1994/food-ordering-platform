@@ -8,6 +8,12 @@ import {
   type ReactNode,
 } from "react";
 import type { UiCommand } from "@contracts/ui-commands";
+import type { MenuItemFeature } from "@contracts/api-contracts";
+
+// The menu's chip filters (docs/features/mcdelivery-redesign/plan.md,
+// Phases 1–2). Presentation only, never commerce state.
+export type DietFilter = "veg" | "non-veg" | null;
+export type FeatureFilter = MenuItemFeature | null;
 
 // Durable UI state — unlike cartStore, this is meant to survive into the
 // real system. See docs/features/phase-1-web-foundation/plan.md §6.
@@ -29,14 +35,31 @@ export type UiState = {
   cartPanelOpen: boolean;
   searchQuery: string;
   detailItemId: string | null;
+  dietFilter: DietFilter;
+  featureFilter: FeatureFilter;
+  // The last ShowNudge (mcdelivery-redesign Phase 4). Only a request: the
+  // nudge itself is fetched from commerce-api and shown only if commerce-api
+  // offers one with this id (NudgeToast). `sequence` makes a repeat of the
+  // same id a new request.
+  requestedNudge: { nudgeId: string; sequence: number } | null;
   commandLog: CommandLogEntry[];
 };
 
+// A UI command that points the customer at menu items must be able to show
+// them: the actions a command produces carry `clearMenuFilters`, and the
+// reducer then drops the chip filters that could hide those items
+// (review-report.md finding 3). The same actions from the customer's own
+// taps and typing keep the chips.
+type FromCommand = { clearMenuFilters?: true };
+
 export type UiAction =
-  | { type: "SELECT_CATEGORY"; categoryId: string | null }
-  | { type: "HIGHLIGHT_ITEM"; itemId: string | null }
+  | ({ type: "SELECT_CATEGORY"; categoryId: string | null } & FromCommand)
+  | ({ type: "HIGHLIGHT_ITEM"; itemId: string | null } & FromCommand)
   | { type: "SET_CART_PANEL_OPEN"; open: boolean }
-  | { type: "SET_SEARCH_QUERY"; query: string }
+  | ({ type: "SET_SEARCH_QUERY"; query: string } & FromCommand)
+  | { type: "SET_DIET_FILTER"; diet: DietFilter }
+  | { type: "SET_FEATURE_FILTER"; feature: FeatureFilter }
+  | { type: "SHOW_NUDGE"; nudgeId: string }
   | { type: "SHOW_ITEM_DETAIL"; itemId: string | null }
   | { type: "LOG_COMMAND"; entry: CommandLogEntry };
 
@@ -46,19 +69,40 @@ export const initialUiState: UiState = {
   cartPanelOpen: false,
   searchQuery: "",
   detailItemId: null,
+  dietFilter: null,
+  featureFilter: null,
+  requestedNudge: null,
   commandLog: [],
 };
+
+function withoutMenuFilters(state: UiState, action: FromCommand): UiState {
+  return action.clearMenuFilters
+    ? { ...state, dietFilter: null, featureFilter: null }
+    : state;
+}
 
 export function uiReducer(state: UiState, action: UiAction): UiState {
   switch (action.type) {
     case "SELECT_CATEGORY":
-      return { ...state, selectedCategory: action.categoryId };
+      return { ...withoutMenuFilters(state, action), selectedCategory: action.categoryId };
     case "HIGHLIGHT_ITEM":
-      return { ...state, highlightedItemId: action.itemId };
+      return { ...withoutMenuFilters(state, action), highlightedItemId: action.itemId };
     case "SET_CART_PANEL_OPEN":
       return { ...state, cartPanelOpen: action.open };
     case "SET_SEARCH_QUERY":
-      return { ...state, searchQuery: action.query };
+      return { ...withoutMenuFilters(state, action), searchQuery: action.query };
+    case "SET_DIET_FILTER":
+      return { ...state, dietFilter: action.diet };
+    case "SET_FEATURE_FILTER":
+      return { ...state, featureFilter: action.feature };
+    case "SHOW_NUDGE":
+      return {
+        ...state,
+        requestedNudge: {
+          nudgeId: action.nudgeId,
+          sequence: (state.requestedNudge?.sequence ?? 0) + 1,
+        },
+      };
     case "SHOW_ITEM_DETAIL":
       return { ...state, detailItemId: action.itemId };
     case "LOG_COMMAND":
@@ -78,6 +122,8 @@ type UiContextValue = UiState & {
   selectCategory: (categoryId: string | null) => void;
   setSearchQuery: (query: string) => void;
   showItemDetail: (itemId: string | null) => void;
+  setDietFilter: (diet: DietFilter) => void;
+  setFeatureFilter: (feature: FeatureFilter) => void;
   applyUiAction: (action: UiAction) => void;
   logCommand: (entry: CommandLogEntry) => void;
 };
@@ -96,6 +142,9 @@ export function UiProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "SET_SEARCH_QUERY", query }),
       showItemDetail: (itemId: string | null) =>
         dispatch({ type: "SHOW_ITEM_DETAIL", itemId }),
+      setDietFilter: (diet: DietFilter) => dispatch({ type: "SET_DIET_FILTER", diet }),
+      setFeatureFilter: (feature: FeatureFilter) =>
+        dispatch({ type: "SET_FEATURE_FILTER", feature }),
       applyUiAction: (action: UiAction) => dispatch(action),
       logCommand: (entry: CommandLogEntry) =>
         dispatch({ type: "LOG_COMMAND", entry }),

@@ -271,6 +271,23 @@ The first domain route. Read-only: no write, update, or delete of any kind.
 - **Response shapes** are defined in `@contracts/api-contracts`
   (`menuResponseSchema`, `menuItemResponseSchema`), not locally to this
   service — see `docs/api/contracts.md`.
+- **Optional presentation fields** (mcdelivery-redesign Phase 2, migration
+  `0002_menu_presentation`). Present only when the item or category has
+  them, never `null`:
+  - item `imageUrl`, category `imageUrl`: a same-origin path to a static
+    file `apps/web` serves (`/menu/burger.svg`). Never a URL with a scheme
+    or host, and never `..`.
+  - item `weightGrams`: 1–5000.
+  - item `badge`: one of `new`, `bestseller`, `value`. A fixed set, so a
+    label cannot make a claim the menu does not back.
+  - item `featured`: a subset of `popular`, `deal`, `new-launch`. These are
+    the "Our Menu" chips.
+
+  ```jsonc
+  { "id": "paneer-crunch-burger", /* …the fields above… */
+    "imageUrl": "/menu/burger.svg", "weightGrams": 190,
+    "badge": "bestseller", "featured": ["popular"] }
+  ```
 
 ## 12. Cart (Phase 8)
 
@@ -430,7 +447,58 @@ snapshot and empties the cart. There is no payment: a new order's status is
   `customerDetailsSchema`, `orderIdSchema`, `orderStatusSchema`), with
   committed JSON Schema for the response and the create request.
 
-## 14. What this document does not cover
+## 14. Nudges (mcdelivery-redesign Phase 3)
+
+Read-only suggestions, computed per request from the caller's own cart and
+the live menu. There is no table and no write. Accepting a suggestion is the
+customer's own `POST /v1/cart/items` (§12). Design: ADR-0026.
+
+```jsonc
+// GET /v1/nudges?surface=cart → 200, zero or one nudge, never more.
+{
+  "nudges": [
+    {
+      "id": "rule:complete-meal-side:fries-medium", // rule:<ruleId>:<itemId>
+      "kind": "complete-meal",   // complete-meal | pairing | time-of-day | new-launch
+      "surface": "cart",         // cart | post-add | item-detail | voice
+      "itemId": "fries-medium",
+      "itemName": "Fries (Medium)",
+      "headline": "Add Fries (Medium) to complete your meal",
+      "priceCents": 10900,       // the menu's live price, never stored
+      "imageUrl": "/menu/fries.svg" // optional
+    }
+  ]
+}
+// An unknown surface, a malformed itemId or an unknown query key → 400
+// { "code": "INVALID_PAYLOAD", "field": "surface" | "itemId", ... }.
+// A well-formed but unknown itemId is not an error: it matches no rule.
+```
+
+- **Query:** `surface` is required. `itemId` is optional: the item just
+  added (`post-add`) or being viewed (`item-detail`).
+- **Rules** (`modules/nudges/domain/nudge.rules.ts`, by priority):
+  - On `cart`, `post-add` and `voice`, there are four meal rules:
+    - a main with no side gets a side;
+    - a main or side with no drink gets a drink;
+    - a main with no dessert gets a dessert once the subtotal is at least ₹199;
+    - between 06:00 and 11:00 Asia/Kolkata, a cart with no breakfast item
+      gets a breakfast item.
+  - On `item-detail`, the viewed item gets a pairing. On an empty cart with
+    no pairing, a new launch is spotlighted.
+  - Category roles are a fixed map in `nudge.roles.ts`. A meal item counts
+    as a main, a side and a drink.
+- **Guardrails, applied by the engine to every rule:**
+  - The item is available, not in the cart, and not the item in focus.
+  - At most one nudge per response.
+  - Popular items come first, then menu order.
+  - Headlines are plain: tests forbid urgency, scarcity, social proof and
+    discount wording.
+  - The per-session caps (3 items, once per item, never after "No thanks")
+    are `apps/web`'s, because they are presentation.
+- **Shapes:** `@contracts/api-contracts` `nudge.ts`, with committed
+  `schema/nudges.v1.json`.
+
+## 15. What this document does not cover
 
 - **Order status changes, cancellation, payment, delivery or order
   history** — none exist (ADR-0016).

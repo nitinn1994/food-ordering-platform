@@ -100,7 +100,7 @@ def test_one_tool_per_contract_command_and_no_more() -> None:
 
     types = [definition.command_type for definition in registry.values()]
 
-    assert len(types) == len(set(types)) == 5
+    assert len(types) == len(set(types)) == 6
     assert set(types) == _contract_types()
 
 

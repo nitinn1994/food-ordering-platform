@@ -98,7 +98,7 @@ describe("CheckoutFlow — non-empty cart (AC1)", () => {
     expect(screen.getByText("Ada Lovelace")).toBeInTheDocument();
     expect(screen.getByText("Tiramisu × 2")).toBeInTheDocument();
     // The backend's subtotal, not unit × quantity (Phase 11 AC4).
-    expect(screen.getByText("Total: $12.34")).toBeInTheDocument();
+    expect(screen.getByText("Total: ₹12.34")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Place order" })).toBeInTheDocument();
   });
 
@@ -162,7 +162,7 @@ describe("CheckoutFlow — placing an order on commerce-api (Phase 11 AC10, AC11
     expect(screen.queryByText("Your cart is empty.")).not.toBeInTheDocument();
     expect(screen.getByText(ORDER_ID)).toBeInTheDocument();
     expect(screen.getByText("Tiramisu × 1")).toBeInTheDocument();
-    expect(screen.getByText("Total: $7.50")).toBeInTheDocument();
+    expect(screen.getByText("Total: ₹7.50")).toBeInTheDocument();
     expect(
       screen.getByRole("link", { name: "Back to the menu" }),
     ).toHaveAttribute("href", "/");

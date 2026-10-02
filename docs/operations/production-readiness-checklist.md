@@ -25,7 +25,7 @@ whoever hosts it.
 | B4 | Backups and restore | **BLOCKED** | Operator: managed PostgreSQL with PITR plus a restore drill (runbook §7). Nothing here takes backups. |
 | D2 | Real model: timeout, token budget, prompt-injection tests, egress path | BLOCKED (dependency) | Real-model phase. The model is simulated today. |
 | D3 | Idempotency key on `POST /v1/cart/items` | BLOCKED (dependency) | Real-model phase (OD12). Nothing retries it today. |
-| D4 | Production menu loading | READY (interim) | `dist/seed.js --allow-production` loads the in-code menu. A real menu-management path is product work. |
+| D4 | Production menu loading | READY (interim) | `dist/seed.js --allow-production` loads the in-code demo menu (`DEMO_MENU_SEED`, since mcdelivery-redesign Phase 2). It never deletes, so a database seeded with the earlier menu needs its old menu rows removed first (production-runbook.md). A real menu-management path is product work. |
 | D5 | Customer PII retention and erasure policy | BLOCKED | Business / legal |
 | D6 | RPO / RTO targets | BLOCKED | Business. Placeholders ≤ 5 min / ≤ 1 h. |
 | — | Payments | NOT APPLICABLE | Not in the roadmap. Orders are `placed` only. |

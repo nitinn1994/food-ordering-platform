@@ -76,3 +76,77 @@ describe("MenuItemCard — Add to cart", () => {
     expect(screen.getByRole("button", { name: "Unavailable" })).toBeDisabled();
   });
 });
+
+describe("MenuItemCard — card anatomy (mcdelivery-redesign AC-U3)", () => {
+  it("shows the veg marker, name, description, price, allergens and calories", async () => {
+    const item = requireItem("garlic-bread");
+    await renderWithCart(
+      <ul>
+        <MenuItemCard item={item} />
+      </ul>,
+    );
+
+    expect(screen.getByRole("img", { name: "Vegetarian" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: item.name })).toBeInTheDocument();
+    expect(screen.getByText(item.description)).toBeInTheDocument();
+    expect(screen.getByText("₹5.95")).toBeInTheDocument();
+    expect(screen.getByText(`Contains: ${item.allergens.join(", ")}`)).toBeInTheDocument();
+    expect(screen.getByText(`${item.calories} kcal`)).toBeInTheDocument();
+  });
+
+  it("marks an item without a vegetarian tag as non-vegetarian and says when nothing is listed", async () => {
+    await renderWithCart(
+      <ul>
+        <MenuItemCard item={requireItem("soup-of-the-day")} />
+      </ul>,
+    );
+
+    expect(screen.getByRole("img", { name: "Non-vegetarian" })).toBeInTheDocument();
+    expect(screen.getByText("No listed allergens")).toBeInTheDocument();
+  });
+
+  it("shows 'Add +' while keeping 'Add to cart' as the button's name", async () => {
+    await renderWithCart(
+      <ul>
+        <MenuItemCard item={requireItem("tiramisu")} />
+      </ul>,
+    );
+
+    expect(screen.getByRole("button", { name: "Add to cart" })).toHaveTextContent("Add +");
+  });
+});
+
+describe("MenuItemCard — presentation fields (mcdelivery-redesign Phase 2)", () => {
+  it("shows the item's image, badge and weight when the menu has them", async () => {
+    const { container } = await renderWithCart(
+      <ul>
+        <MenuItemCard
+          item={{
+            ...requireItem("tiramisu"),
+            imageUrl: "/menu/dessert.svg",
+            badge: "bestseller",
+            weightGrams: 120,
+          }}
+        />
+      </ul>,
+    );
+
+    const image = container.querySelector("img");
+    expect(image).toHaveAttribute("src", "/menu/dessert.svg");
+    expect(image).toHaveAttribute("alt", "");
+    expect(screen.getByText("Bestseller")).toBeInTheDocument();
+    expect(screen.getByText(/120 g · \d+ kcal/)).toBeInTheDocument();
+  });
+
+  it("falls back to the illustration with no image, and shows no badge or weight", async () => {
+    const { container } = await renderWithCart(
+      <ul>
+        <MenuItemCard item={requireItem("tiramisu")} />
+      </ul>,
+    );
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.queryByText(/ g · /)).not.toBeInTheDocument();
+  });
+});

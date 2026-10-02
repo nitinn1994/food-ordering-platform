@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, RootModel
@@ -21,6 +22,18 @@ class Allergen(RootModel[str]):
     root: Annotated[
         str, Field(max_length=32, min_length=1, pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$")
     ]
+
+
+class Badge(StrEnum):
+    new = "new"
+    bestseller = "bestseller"
+    value = "value"
+
+
+class FeaturedEnum(StrEnum):
+    popular = "popular"
+    deal = "deal"
+    new_launch = "new-launch"
 
 
 class MenuItem(BaseModel):
@@ -41,6 +54,16 @@ class MenuItem(BaseModel):
     dietaryTags: Annotated[list[DietaryTag], Field(max_length=10)]
     allergens: Annotated[list[Allergen], Field(max_length=20)]
     calories: Annotated[int, Field(ge=0, le=9007199254740991)]
+    imageUrl: Annotated[
+        str | None,
+        Field(
+            max_length=200,
+            pattern="^(?:\\/[a-z0-9][a-z0-9-]*)+\\.(?:svg|png|jpe?g|webp)$",
+        ),
+    ] = None
+    weightGrams: Annotated[int | None, Field(ge=1, le=5000)] = None
+    badge: Badge | None = None
+    featured: Annotated[list[FeaturedEnum] | None, Field(max_length=3)] = None
 
 
 class MenuCategory(BaseModel):
@@ -51,6 +74,13 @@ class MenuCategory(BaseModel):
         str, Field(max_length=64, min_length=1, pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$")
     ]
     name: Annotated[str, Field(max_length=80, min_length=1)]
+    imageUrl: Annotated[
+        str | None,
+        Field(
+            max_length=200,
+            pattern="^(?:\\/[a-z0-9][a-z0-9-]*)+\\.(?:svg|png|jpe?g|webp)$",
+        ),
+    ] = None
     items: list[MenuItem]
 
 
@@ -99,3 +129,52 @@ class UpdateCartItemRequest(BaseModel):
         extra="forbid",
     )
     quantity: Annotated[int, Field(ge=1, le=99)]
+
+
+class Kind(StrEnum):
+    complete_meal = "complete-meal"
+    pairing = "pairing"
+    time_of_day = "time-of-day"
+    new_launch = "new-launch"
+
+
+class Surface(StrEnum):
+    cart = "cart"
+    post_add = "post-add"
+    item_detail = "item-detail"
+    voice = "voice"
+
+
+class Nudge(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Annotated[
+        str,
+        Field(
+            max_length=140,
+            pattern="^rule:[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$",
+        ),
+    ]
+    kind: Kind
+    surface: Surface
+    itemId: Annotated[
+        str, Field(max_length=64, min_length=1, pattern="^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    ]
+    itemName: Annotated[str, Field(max_length=80, min_length=1)]
+    headline: Annotated[str, Field(max_length=120, min_length=1)]
+    priceCents: Annotated[int, Field(ge=0, le=9007199254740991)]
+    imageUrl: Annotated[
+        str | None,
+        Field(
+            max_length=200,
+            pattern="^(?:\\/[a-z0-9][a-z0-9-]*)+\\.(?:svg|png|jpe?g|webp)$",
+        ),
+    ] = None
+
+
+class NudgesResponse(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    nudges: Annotated[list[Nudge], Field(max_length=1)]

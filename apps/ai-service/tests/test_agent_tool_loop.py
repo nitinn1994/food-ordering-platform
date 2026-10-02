@@ -38,6 +38,7 @@ from tests.fakes import SequencedChatModel, calls
 TOOL_NAMES = [
     "get_menu",
     "get_cart",
+    "get_nudges",
     "add_cart_item",
     "set_cart_item_quantity",
     "remove_cart_item",
@@ -49,6 +50,7 @@ PRESENTATION_TOOL_NAMES = [
     "open_cart_panel",
     "show_item_detail",
     "search_menu",
+    "show_nudge",
 ]
 SENTINEL_MESSAGE = "SENTINEL_TURN_MESSAGE_5d0e"
 SENTINEL_ITEM = "sentinel-item-5d0e"

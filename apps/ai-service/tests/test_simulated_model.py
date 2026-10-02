@@ -132,22 +132,93 @@ def test_a_refused_presentation_call_is_not_claimed() -> None:
 # The add path: the cart is shown only after commerce-api said ok
 
 
-def test_a_successful_add_opens_the_cart_then_replies() -> None:
+def nudges_result(*nudges: dict[str, Any]) -> str:
+    return json.dumps({"ok": True, "data": {"nudges": list(nudges)}})
+
+
+NUDGE = {
+    "id": "rule:complete-meal-side:garlic-bread",
+    "kind": "complete-meal",
+    "surface": "voice",
+    "itemId": "garlic-bread",
+    "itemName": "Garlic Bread",
+    "headline": "Add Garlic Bread to complete your meal",
+    "priceCents": 595,
+}
+
+
+def with_results(
+    turn: list[BaseMessage], call: AIMessage, *contents: str
+) -> list[BaseMessage]:
+    """A step with several calls: one tool result per call, in order."""
+    turn = [*turn, call]
+    for tool_call, content in zip(call.tool_calls, contents, strict=True):
+        turn.append(ToolMessage(content=content, tool_call_id=tool_call["id"]))
+    return turn
+
+
+def test_a_successful_add_asks_for_a_nudge_then_shows_it_and_offers_it() -> None:
+    # mcdelivery-redesign Phase 4 (requirements.md AC-V2).
     add = respond([HumanMessage("add tiramisu")])
 
-    opened = respond(after("add tiramisu", (add, OK)))
+    asked = respond(after("add tiramisu", (add, OK)))
+    assert only_call(asked) == (
+        "get_nudges",
+        {"surface": "voice", "itemId": "tiramisu"},
+    )
+
+    shown = respond(after("add tiramisu", (add, OK), (asked, nudges_result(NUDGE))))
+    assert [(c["name"], c["args"]) for c in shown.tool_calls] == [
+        ("open_cart_panel", {"open": True}),
+        ("show_nudge", {"nudgeId": NUDGE["id"]}),
+    ]
+
+    turn = with_results(
+        after("add tiramisu", (add, OK), (asked, nudges_result(NUDGE))), shown, OK, OK
+    )
+    reply = respond(turn)
+    assert reply.tool_calls == []
+    assert reply.content == f"{ADDED_REPLY} Add Garlic Bread to complete your meal?"
+    # One suggestion sentence, no price.
+    assert "₹" not in str(reply.content) and "595" not in str(reply.content)
+
+
+@pytest.mark.parametrize(
+    "nudge_outcome", [nudges_result(), failed("COMMERCE_UNAVAILABLE")]
+)
+def test_with_no_nudge_the_cart_still_opens_and_nothing_is_offered(
+    nudge_outcome: str,
+) -> None:
+    add = respond([HumanMessage("add tiramisu")])
+    asked = respond(after("add tiramisu", (add, OK)))
+
+    opened = respond(after("add tiramisu", (add, OK), (asked, nudge_outcome)))
     assert only_call(opened) == ("open_cart_panel", {"open": True})
 
-    reply = respond(after("add tiramisu", (add, OK), (opened, OK)))
+    reply = respond(
+        after("add tiramisu", (add, OK), (asked, nudge_outcome), (opened, OK))
+    )
     assert reply.content == ADDED_REPLY
-    assert reply.tool_calls == []
+
+
+def test_a_suggestion_the_screen_could_not_show_is_not_spoken() -> None:
+    add = respond([HumanMessage("add tiramisu")])
+    asked = respond(after("add tiramisu", (add, OK)))
+    base = after("add tiramisu", (add, OK), (asked, nudges_result(NUDGE)))
+    shown = respond(base)
+
+    reply = respond(with_results(base, shown, OK, failed("INVALID_TOOL_ARGUMENTS")))
+
+    assert reply.content == ADDED_REPLY
 
 
 def test_call_ids_are_unique_within_a_turn() -> None:
     add = respond([HumanMessage("add tiramisu")])
-    opened = respond(after("add tiramisu", (add, OK)))
+    asked = respond(after("add tiramisu", (add, OK)))
+    shown = respond(after("add tiramisu", (add, OK), (asked, nudges_result(NUDGE))))
 
-    assert add.tool_calls[0]["id"] != opened.tool_calls[0]["id"]
+    ids = [c["id"] for m in (add, asked, shown) for c in m.tool_calls]
+    assert len(ids) == len(set(ids)) == 4
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 .panel {
   margin-top: 1.5rem;
   padding: 1rem;
-  border: 1px dashed #999;
+  border: 1px dashed var(--color-border-strong);
   border-radius: 8px;
   font-family: ui-monospace, monospace;
   font-size: 0.85rem;
@@ -16,9 +16,9 @@
 }
 
 .accepted {
-  color: #0a7d2c;
+  color: var(--color-success);
 }
 
 .rejected {
-  color: #a00;
+  color: var(--color-danger);
 }

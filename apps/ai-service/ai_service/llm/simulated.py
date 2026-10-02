@@ -14,12 +14,16 @@ come from it). It reads only the current turn's messages:
   ``find X``, ``... details``, ``tiramisu``, ``cart``: one presentation
   tool call, then a fixed reply.
 - ``add <item>``: ``add_cart_item`` with the item's name as a slug and
-  quantity 1. Only if that tool answers ``"ok": true`` does it then open the
-  cart; on any error it explains the failure and emits no UI command
-  (plan.md section 17). commerce-api decides whether the item exists.
+  quantity 1. Only if that tool answers ``"ok": true`` does it then ask
+  ``get_nudges`` (surface ``voice``) for one suggestion, open the cart and,
+  if there is a suggestion, ``show_nudge`` it; on any add error it explains
+  the failure and emits no UI command (plan.md section 17). commerce-api
+  decides whether the item exists and what, if anything, to suggest
+  (docs/features/mcdelivery-redesign/plan.md, Phase 4).
 - Anything else: the fixed ``SIMULATED_REPLY``.
 
-Its replies are fixed strings: it never echoes the customer's text into a
+Its replies are fixed strings, plus at most one suggestion sentence that is
+commerce-api's own nudge headline: it never echoes the customer's text into a
 reply and never states a price or total. The one piece of customer text it
 passes on is a search phrase, as a tool argument the tool validates. It
 calls only tools the graph registers (tests/test_simulated_model.py).
@@ -61,6 +65,8 @@ UNUSABLE_RESULT_REPLY = "Sorry, something went wrong. Please try again."
 
 # The tools this table calls. Each must be registered (a test checks).
 ADD_CART_ITEM = "add_cart_item"
+GET_NUDGES = "get_nudges"
+SHOW_NUDGE = "show_nudge"
 OPEN_CART_PANEL = "open_cart_panel"
 SHOW_MENU_CATEGORY = "show_menu_category"
 HIGHLIGHT_ITEM = "highlight_item"
@@ -69,6 +75,8 @@ SEARCH_MENU = "search_menu"
 TOOL_NAMES = frozenset(
     {
         ADD_CART_ITEM,
+        GET_NUDGES,
+        SHOW_NUDGE,
         OPEN_CART_PANEL,
         SHOW_MENU_CATEGORY,
         HIGHLIGHT_ITEM,
@@ -76,6 +84,10 @@ TOOL_NAMES = frozenset(
         SEARCH_MENU,
     }
 )
+
+# A conversation's suggestions are asked for on the voice surface, whether
+# the customer typed or spoke: the same one-sentence offer either way.
+NUDGE_SURFACE = "voice"
 
 # Reply after a presentation call, by tool: the same wording apps/web's
 # ChatInput showed for each command before Phase 15.
@@ -176,7 +188,7 @@ def respond(messages: Sequence[BaseMessage]) -> AIMessage:
     ]
     if not requested:
         return AIMessage(content=UNUSABLE_RESULT_REPLY)
-    return _after_tool(requested, results[-1], step=len(requested))
+    return _after_tool(requested, results, step=len(requested))
 
 
 def _current_turn(messages: Sequence[BaseMessage]) -> list[BaseMessage]:
@@ -213,23 +225,86 @@ def _first_step(text: str) -> AIMessage:
 
 
 def _after_tool(
-    requested: Sequence[ToolCall], result: ToolMessage, step: int
+    requested: Sequence[ToolCall], results: Sequence[ToolMessage], step: int
 ) -> AIMessage:
+    result = results[-1]
     outcome = _outcome(result)
     if outcome is None:
         return AIMessage(content=UNUSABLE_RESULT_REPLY)
     ok, code = outcome
-    name = requested[-1]["name"]
+    name = _name_of(requested, result)
     if name == ADD_CART_ITEM:
         if ok:
-            # Only now, with commerce-api's success in hand, is the cart shown.
-            return _call(OPEN_CART_PANEL, {"open": True}, step=step)
+            # Only now, with commerce-api's success in hand, is anything
+            # suggested or shown.
+            item_id = requested[-1]["args"].get("itemId")
+            return _call(
+                GET_NUDGES, {"surface": NUDGE_SURFACE, "itemId": item_id}, step=step
+            )
         return AIMessage(content=ADD_FAILURE_REPLIES.get(code, ADD_FAILURE_REPLY))
+    if name == GET_NUDGES:
+        # A failed or empty suggestion never blocks showing the cart.
+        nudge = _first_nudge(result) if ok else None
+        calls: list[tuple[str, dict[str, Any]]] = [(OPEN_CART_PANEL, {"open": True})]
+        if nudge is not None:
+            calls.append((SHOW_NUDGE, {"nudgeId": nudge["id"]}))
+        return _calls(calls, step=step)
+    if any(call["name"] == ADD_CART_ITEM for call in requested):
+        return AIMessage(content=_added_reply(requested, results))
     if not ok:
         return AIMessage(content=NOT_SHOWN_REPLY)
-    if any(call["name"] == ADD_CART_ITEM for call in requested):
-        return AIMessage(content=ADDED_REPLY)
     return AIMessage(content=SHOWN_REPLIES.get(name, NOT_SHOWN_REPLY))
+
+
+def _name_of(requested: Sequence[ToolCall], result: ToolMessage) -> str:
+    """The tool a result answers: by its call id, else the last call."""
+    for call in requested:
+        if call.get("id") == result.tool_call_id:
+            return call["name"]
+    return requested[-1]["name"]
+
+
+def _result_for(
+    name: str, requested: Sequence[ToolCall], results: Sequence[ToolMessage]
+) -> ToolMessage | None:
+    ids = {call.get("id") for call in requested if call["name"] == name}
+    return next((r for r in results if r.tool_call_id in ids), None)
+
+
+def _first_nudge(result: ToolMessage) -> dict[str, Any] | None:
+    """The one nudge in a successful get_nudges result, if any. Its fields
+    were validated against the contract by the tool before they got here."""
+    if not isinstance(result.content, str):
+        return None
+    try:
+        content = json.loads(result.content)
+    except json.JSONDecodeError:
+        return None
+    data = content.get("data") if isinstance(content, dict) else None
+    nudges = data.get("nudges") if isinstance(data, dict) else None
+    if not isinstance(nudges, list) or not nudges or not isinstance(nudges[0], dict):
+        return None
+    nudge = nudges[0]
+    if not isinstance(nudge.get("id"), str) or not isinstance(
+        nudge.get("headline"), str
+    ):
+        return None
+    return nudge
+
+
+def _added_reply(requested: Sequence[ToolCall], results: Sequence[ToolMessage]) -> str:
+    """ "Added it" plus commerce-api's suggestion, but only if show_nudge put
+    that suggestion on screen — a spoken offer always matches the screen."""
+    shown = _result_for(SHOW_NUDGE, requested, results)
+    nudges = _result_for(GET_NUDGES, requested, results)
+    shown_outcome = None if shown is None else _outcome(shown)
+    nudge = None if nudges is None else _first_nudge(nudges)
+    if shown_outcome is None or not shown_outcome[0] or nudge is None:
+        return ADDED_REPLY
+    headline = nudge["headline"].strip()
+    if not headline.endswith(("?", ".", "!")):
+        headline = f"{headline}?"
+    return f"{ADDED_REPLY} {headline}"
 
 
 def _outcome(result: ToolMessage) -> tuple[bool, str] | None:
@@ -251,6 +326,17 @@ def _call(name: str, args: dict[str, Any], step: int) -> AIMessage:
     return AIMessage(
         content="",
         tool_calls=[ToolCall(name=name, args=args, id=f"simulated_{step}")],
+    )
+
+
+def _calls(calls: Sequence[tuple[str, dict[str, Any]]], step: int) -> AIMessage:
+    """Several calls in one step; each id is unique within the turn."""
+    return AIMessage(
+        content="",
+        tool_calls=[
+            ToolCall(name=name, args=args, id=f"simulated_{step}_{index}")
+            for index, (name, args) in enumerate(calls)
+        ],
     )
 
 

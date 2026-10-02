@@ -50,8 +50,8 @@ describe("CartList — with items", () => {
     expect(
       screen.getByRole("button", { name: "Increase quantity of Tiramisu" }),
     ).toBeInTheDocument();
-    // tiramisu (750) + garlic-bread (595) = 1345 cents = $13.45.
-    expect(screen.getByText("Total: $13.45")).toBeInTheDocument();
+    // tiramisu (750) + garlic-bread (595) = 1345 cents = ₹13.45.
+    expect(screen.getByText("Total: ₹13.45")).toBeInTheDocument();
   });
 
   it("shows a link to checkout once the cart has a line (AC2)", async () => {
@@ -80,7 +80,7 @@ describe("CartList — with items", () => {
     for (const button of screen.getAllByRole("button")) {
       expect(button).toBeDisabled();
     }
-    expect(screen.getByText("Total: $20.95")).toBeInTheDocument();
+    expect(screen.getByText("Total: ₹20.95")).toBeInTheDocument();
 
     await act(async () =>
       response.resolve(
@@ -92,7 +92,7 @@ describe("CartList — with items", () => {
         ),
       ),
     );
-    expect(screen.getByText("Total: $28.45")).toBeInTheDocument();
+    expect(screen.getByText("Total: ₹28.45")).toBeInTheDocument();
     expect(container.querySelector("[aria-busy='true']")).toBeNull();
   });
 });

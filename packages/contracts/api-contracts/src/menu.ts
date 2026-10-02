@@ -31,6 +31,34 @@ const SLUG_TAG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const slugTagSchema = z.string().min(1).max(MAX_TAG_LENGTH).regex(SLUG_TAG_PATTERN);
 
+// Presentation fields for the McDelivery-style menu (docs/features/
+// mcdelivery-redesign/plan.md, Phase 2). All optional: an item or category
+// without them is still valid, so the Phase 7–10 menu and every existing
+// fixture keep validating unchanged.
+//
+// An image is a same-origin path to a static file apps/web serves (for
+// example "/menu/burger.svg") — never a URL with a scheme or host, and never
+// a `..` segment. apps/web's CSP allows only same-origin images anyway.
+const MAX_IMAGE_PATH_LENGTH = 200;
+const IMAGE_PATH_PATTERN = /^(?:\/[a-z0-9][a-z0-9-]*)+\.(?:svg|png|jpe?g|webp)$/;
+export const menuImagePathSchema = z
+  .string()
+  .max(MAX_IMAGE_PATH_LENGTH)
+  .regex(IMAGE_PATH_PATTERN);
+
+// A fixed set, not free text: a badge may not make a claim the menu does
+// not back (no "20% off" without a discount, no scarcity) — plan.md's nudge
+// guardrails apply to the menu's own labels too.
+export const MENU_ITEM_BADGES = ["new", "bestseller", "value"] as const;
+export const menuItemBadgeSchema = z.enum(MENU_ITEM_BADGES);
+export type MenuItemBadge = z.infer<typeof menuItemBadgeSchema>;
+
+// Which "Our Menu" chip lists the item ("Popular", "Deals", "New Launch").
+export const MENU_ITEM_FEATURES = ["popular", "deal", "new-launch"] as const;
+export const menuItemFeatureSchema = z.enum(MENU_ITEM_FEATURES);
+export type MenuItemFeature = z.infer<typeof menuItemFeatureSchema>;
+const MAX_WEIGHT_GRAMS = 5000;
+
 export const menuItemSchema = z.strictObject({
   id: menuItemIdSchema,
   categoryId: menuCategoryIdSchema,
@@ -42,6 +70,10 @@ export const menuItemSchema = z.strictObject({
   dietaryTags: z.array(slugTagSchema).max(MAX_DIETARY_TAGS),
   allergens: z.array(slugTagSchema).max(MAX_ALLERGENS),
   calories: z.number().int().min(0),
+  imageUrl: menuImagePathSchema.optional(),
+  weightGrams: z.number().int().min(1).max(MAX_WEIGHT_GRAMS).optional(),
+  badge: menuItemBadgeSchema.optional(),
+  featured: z.array(menuItemFeatureSchema).max(MENU_ITEM_FEATURES.length).optional(),
 });
 
 export type MenuItem = z.infer<typeof menuItemSchema>;
@@ -49,6 +81,7 @@ export type MenuItem = z.infer<typeof menuItemSchema>;
 export const menuCategorySchema = z.strictObject({
   id: menuCategoryIdSchema,
   name: z.string().min(1).max(MAX_NAME_LENGTH),
+  imageUrl: menuImagePathSchema.optional(),
   items: z.array(menuItemSchema),
 });
 

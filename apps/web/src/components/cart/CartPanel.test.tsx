@@ -36,7 +36,7 @@ describe("CartPanel — compact summary", () => {
     });
 
     expect(screen.getByRole("heading", { name: "Cart (2)" })).toBeInTheDocument();
-    expect(screen.getByText("Total: $12.34")).toBeInTheDocument();
+    expect(screen.getByText("Total: ₹12.34")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /view cart/i })).toHaveAttribute(
       "href",
       "/cart",
@@ -55,7 +55,7 @@ describe("CartPanel — compact summary", () => {
     await user.click(screen.getByRole("button", { name: "add tiramisu" }));
 
     expect(await screen.findByRole("heading", { name: "Cart (1)" })).toBeInTheDocument();
-    expect(screen.getByText("Total: $7.50")).toBeInTheDocument();
+    expect(screen.getByText("Total: ₹7.50")).toBeInTheDocument();
   });
 
   it("shows a loading state until the cart has loaded", async () => {
@@ -84,5 +84,15 @@ describe("CartPanel — compact summary", () => {
       "Sorry, that item is currently unavailable.",
     );
     await waitFor(() => expect(screen.queryByText(/Backend detail/)).toBeNull());
+  });
+});
+
+describe("CartPanel — empty-state illustration (mcdelivery-redesign)", () => {
+  it("is decorative and hidden from assistive technology", async () => {
+    const { container } = await renderWithCart(<CartPanel />, { cart: EMPTY_CART });
+
+    const svg = container.querySelector("svg");
+    expect(svg).not.toBeNull();
+    expect(svg).toHaveAttribute("aria-hidden", "true");
   });
 });

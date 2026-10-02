@@ -8,7 +8,7 @@
 .hint {
   margin: 0;
   font-size: 0.85rem;
-  color: #555;
+  color: var(--color-muted);
 }
 
 .hint {
@@ -24,10 +24,12 @@
 
 .controls button {
   padding: 0.5rem 1rem;
-  border: 1px solid #222;
-  border-radius: 6px;
-  background: #fff;
-  color: #222;
+  min-height: 44px;
+  border: 2px solid var(--color-brand-red);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-brand-red-dark);
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -37,19 +39,19 @@
 }
 
 .controls button:focus-visible {
-  outline: 3px solid #1a5fb4;
+  outline: 3px solid var(--color-focus);
   outline-offset: 2px;
 }
 
 .recording {
   border-width: 2px;
-  box-shadow: 0 0 0 3px #c01c28;
+  box-shadow: 0 0 0 3px var(--color-brand-red);
   animation: pulse 1.2s ease-in-out infinite;
 }
 
 .recordingLabel {
   font-weight: 600;
-  color: #c01c28;
+  color: var(--color-brand-red);
 }
 
 .status {
@@ -60,12 +62,12 @@
 .interim {
   margin: 0;
   font-style: italic;
-  color: #444;
+  color: var(--color-muted);
 }
 
 @keyframes pulse {
   50% {
-    box-shadow: 0 0 0 6px #c01c28;
+    box-shadow: 0 0 0 6px var(--color-brand-red);
   }
 }
 

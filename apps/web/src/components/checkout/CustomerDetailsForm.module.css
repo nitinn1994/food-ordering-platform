@@ -5,7 +5,7 @@
 }
 
 .errorSummary {
-  border: 1px solid #a00;
+  border: 1px solid var(--color-danger);
   border-radius: 4px;
   padding: 1rem;
   margin-bottom: 1rem;
@@ -41,4 +41,19 @@
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+.actions button {
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-brand-yellow);
+  color: var(--color-text);
+  font-weight: var(--font-weight-heavy);
+  cursor: pointer;
+}
+
+.actions button:disabled {
+  background: var(--color-border);
+  color: var(--color-muted);
+  cursor: not-allowed;
 }

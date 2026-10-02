@@ -1,6 +1,7 @@
 """The tool allowlist (Phase 14 plan.md sections 4, 5, 18 and 19; OD1).
 
-Five tools, declared literally below. There is no discovery, no decorator
+Six tools, declared literally below (``get_nudges`` since mcdelivery-redesign
+Phase 4). There is no discovery, no decorator
 registration, no plugin loading and no way to add a tool at runtime:
 ``build_tool_registry`` returns a read-only mapping, and ``ToolService``
 resolves a model's tool name only against it. The schemas the model is shown
@@ -36,6 +37,7 @@ from ai_service.tools.schemas import (
     AddCartItemInput,
     GetCartInput,
     GetMenuInput,
+    GetNudgesInput,
     RemoveCartItemInput,
     SetCartItemQuantityInput,
     ToolInput,
@@ -67,6 +69,10 @@ async def _get_menu(client: CommerceClient, _: GetMenuInput) -> ToolData:
 
 async def _get_cart(client: CommerceClient, _: GetCartInput) -> ToolData:
     return await client.get_cart()
+
+
+async def _get_nudges(client: CommerceClient, args: GetNudgesInput) -> ToolData:
+    return await client.get_nudges(args.surface, args.itemId)
 
 
 async def _add_cart_item(client: CommerceClient, intent: AddItemToCart) -> ToolData:
@@ -107,6 +113,19 @@ def build_tool_registry() -> Mapping[str, ToolDefinition[Any]]:
             category="read",
             input_model=GetCartInput,
             handler=_get_cart,
+        ),
+        ToolDefinition(
+            name="get_nudges",
+            description=(
+                "Read at most one suggestion from the ordering service, worked out "
+                "from the customer's current cart (for example a side for a "
+                "burger). Read-only: it never adds anything. Offer it in one short "
+                "sentence; add it only if the customer says yes. Pass itemId for "
+                "the item just added or being looked at."
+            ),
+            category="read",
+            input_model=GetNudgesInput,
+            handler=_get_nudges,
         ),
         ToolDefinition(
             name="add_cart_item",

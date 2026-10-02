@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { menuCategoryIdSchema, menuItemIdSchema } from "@contracts/common";
+import { menuCategoryIdSchema, menuItemIdSchema, nudgeIdSchema } from "@contracts/common";
 
 // A UI command describes what the screen should do. It must never change
 // commerce state — see docs/architecture/system-architecture.md §4.4. If a
@@ -45,12 +45,23 @@ export const searchMenuSchema = z.strictObject({
   query: z.string().max(MAX_SEARCH_QUERY_LENGTH),
 });
 
+// Show one of commerce-api's nudges (docs/features/mcdelivery-redesign/
+// plan.md, Phase 4). It carries only the nudge's id — never an item, a
+// price or copy: apps/web fetches GET /v1/nudges itself and shows the nudge
+// only if commerce-api offers one with this id (requirements.md AC-V1).
+// Accepting it is the customer's own add-to-cart, never this command.
+export const showNudgeSchema = z.strictObject({
+  type: z.literal("ShowNudge"),
+  nudgeId: nudgeIdSchema,
+});
+
 export const uiCommandSchema = z.discriminatedUnion("type", [
   showMenuCategorySchema,
   highlightItemSchema,
   openCartPanelSchema,
   showItemDetailSchema,
   searchMenuSchema,
+  showNudgeSchema,
 ]);
 
 export type UiCommand = z.infer<typeof uiCommandSchema>;
@@ -62,4 +73,5 @@ export const UI_COMMAND_TYPES = [
   "OpenCartPanel",
   "ShowItemDetail",
   "SearchMenu",
+  "ShowNudge",
 ] as const satisfies readonly UiCommandType[];

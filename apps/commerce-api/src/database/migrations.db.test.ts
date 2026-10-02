@@ -1,4 +1,4 @@
-import { type Kysely, sql } from "kysely";
+import { type Insertable, type Kysely, sql } from "kysely";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   APPLICATION_TABLES,
@@ -11,6 +11,8 @@ import { migrate } from "./migrator";
 // AC1 and AC2 (docs/features/phase-10-database-persistence/requirements.md):
 // the schema migration 0001 produces, asserted from the catalog itself
 // rather than trusted from the migration's source, plus up → down → up.
+// Since mcdelivery-redesign Phase 2 the expected schema is the latest one:
+// 0001 plus 0002_menu_presentation's menu columns and checks.
 // test/db-global-setup.ts has already migrated this database to latest.
 
 type Column = readonly [name: string, udt: string, nullable: boolean, maxLength?: number];
@@ -23,6 +25,7 @@ const EXPECTED_COLUMNS: Record<(typeof APPLICATION_TABLES)[number], readonly Col
     ["id", "varchar", NOT_NULL, 64],
     ["name", "text", NOT_NULL],
     ["position", "int4", NOT_NULL],
+    ["image_url", "text", NULLABLE],
   ],
   menu_items: [
     ["id", "varchar", NOT_NULL, 64],
@@ -36,6 +39,10 @@ const EXPECTED_COLUMNS: Record<(typeof APPLICATION_TABLES)[number], readonly Col
     ["dietary_tags", "_text", NOT_NULL],
     ["allergens", "_text", NOT_NULL],
     ["calories", "int4", NOT_NULL],
+    ["image_url", "text", NULLABLE],
+    ["weight_grams", "int4", NULLABLE],
+    ["badge", "text", NULLABLE],
+    ["featured", "_text", NOT_NULL],
   ],
   carts: [
     ["owner_id", "varchar", NOT_NULL, 128],
@@ -106,6 +113,11 @@ const EXPECTED_CHECKS = [
   "menu_items_position_check",
   "menu_items_price_cents_check",
   "menu_items_calories_check",
+  "menu_categories_image_url_check",
+  "menu_items_image_url_check",
+  "menu_items_weight_grams_check",
+  "menu_items_badge_check",
+  "menu_items_featured_check",
   "carts_version_check",
   "cart_lines_position_check",
   "cart_lines_quantity_check",
@@ -438,6 +450,84 @@ describe("migration 0001_initial_schema — constraints in action (AC1)", () => 
   });
 });
 
+describe("migration 0002_menu_presentation — constraints in action (mcdelivery-redesign Phase 2)", () => {
+  let db: Kysely<DatabaseSchema>;
+
+  beforeAll(() => {
+    db = createTestDatabase();
+  });
+
+  afterAll(async () => {
+    await db.destroy();
+  });
+
+  beforeEach(async () => {
+    await resetDatabase(db);
+    await insertCategory(db);
+  });
+
+  it("accepts every presentation field, and defaults featured to empty", async () => {
+    await insertItem(db, {
+      image_url: "/menu/burger.svg",
+      weight_grams: 150,
+      badge: "bestseller",
+      featured: ["popular", "deal"],
+    });
+    await insertItem(db, { id: "plain", position: 1 });
+    const rows = await db
+      .selectFrom("menu_items")
+      .select(["id", "image_url", "weight_grams", "badge", "featured"])
+      .orderBy("position")
+      .execute();
+    expect(rows).toEqual([
+      {
+        id: "garlic-bread",
+        image_url: "/menu/burger.svg",
+        weight_grams: 150,
+        badge: "bestseller",
+        featured: ["popular", "deal"],
+      },
+      { id: "plain", image_url: null, weight_grams: null, badge: null, featured: [] },
+    ]);
+  });
+
+  it("rejects an image that is not a same-origin path, on items and categories", async () => {
+    await expectViolation(
+      insertItem(db, { image_url: "https://example.com/a.svg" }),
+      "23514",
+      "menu_items_image_url_check",
+    );
+    await expectViolation(
+      insertItem(db, { image_url: "/menu/../a.svg" }),
+      "23514",
+      "menu_items_image_url_check",
+    );
+    await expectViolation(
+      insertCategory(db, { id: "mains", position: 1, image_url: "//x.test/a.png" }),
+      "23514",
+      "menu_categories_image_url_check",
+    );
+  });
+
+  it("rejects a non-positive weight, an unknown badge and an unknown feature", async () => {
+    await expectViolation(
+      insertItem(db, { weight_grams: 0 }),
+      "23514",
+      "menu_items_weight_grams_check",
+    );
+    await expectViolation(
+      insertItem(db, { badge: "20-off" }),
+      "23514",
+      "menu_items_badge_check",
+    );
+    await expectViolation(
+      insertItem(db, { featured: ["for-you"] }),
+      "23514",
+      "menu_items_featured_check",
+    );
+  });
+});
+
 describe("migrations — reversibility and repeatability (AC2)", () => {
   let db: Kysely<DatabaseSchema>;
 
@@ -460,6 +550,7 @@ describe("migrations — reversibility and repeatability (AC2)", () => {
 
     const down = await migrate(db, "none");
     expect(down.results?.map((r) => [r.migrationName, r.direction, r.status])).toEqual([
+      ["0002_menu_presentation", "Down", "Success"],
       ["0001_initial_schema", "Down", "Success"],
     ]);
     expect(await applicationTables(db)).toEqual([]);
@@ -467,14 +558,20 @@ describe("migrations — reversibility and repeatability (AC2)", () => {
     const up = await migrate(db, "latest");
     expect(up.results?.map((r) => [r.migrationName, r.direction, r.status])).toEqual([
       ["0001_initial_schema", "Up", "Success"],
+      ["0002_menu_presentation", "Up", "Success"],
     ]);
     expect(await schemaSnapshot(db)).toEqual(before);
   });
 
-  it("reverts one step with 'down'", async () => {
+  it("reverts one step with 'down': 0002 only, back to 0001's menu columns", async () => {
     const { results } = await migrate(db, "down");
-    expect(results?.map((r) => r.migrationName)).toEqual(["0001_initial_schema"]);
-    expect(await applicationTables(db)).toEqual([]);
+    expect(results?.map((r) => r.migrationName)).toEqual(["0002_menu_presentation"]);
+    expect(await applicationTables(db)).toEqual([...APPLICATION_TABLES].sort());
+    const presentationColumns = ["image_url", "weight_grams", "badge", "featured"];
+    for (const table of ["menu_categories", "menu_items"]) {
+      const names = (await columnsOf(db, table)).map(([name]) => name);
+      expect(names.filter((name) => presentationColumns.includes(name))).toEqual([]);
+    }
   });
 });
 
@@ -506,7 +603,7 @@ async function expectViolation(
 
 function insertCategory(
   db: Kysely<DatabaseSchema>,
-  overrides: Partial<DatabaseSchema["menu_categories"]> = {},
+  overrides: Partial<Insertable<DatabaseSchema["menu_categories"]>> = {},
 ) {
   return db
     .insertInto("menu_categories")
@@ -516,7 +613,7 @@ function insertCategory(
 
 function insertItem(
   db: Kysely<DatabaseSchema>,
-  overrides: Partial<DatabaseSchema["menu_items"]> = {},
+  overrides: Partial<Insertable<DatabaseSchema["menu_items"]>> = {},
 ) {
   return db
     .insertInto("menu_items")

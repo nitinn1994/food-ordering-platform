@@ -57,7 +57,7 @@ describe("CartLine — quantity controls and subtotal", () => {
       </ul>,
     );
 
-    expect(screen.getByText("$11.11")).toBeInTheDocument();
+    expect(screen.getByText("₹11.11")).toBeInTheDocument();
   });
 
   it("sets the absolute quantity q+1 / q-1 via PATCH (Phase 11 AC5)", async () => {

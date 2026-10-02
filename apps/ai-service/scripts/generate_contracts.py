@@ -57,6 +57,8 @@ SCHEMAS = {
     "CartResponse": "cart.v1.json",
     "AddCartItemRequest": "cart-add-item-request.v1.json",
     "UpdateCartItemRequest": "cart-update-item-request.v1.json",
+    # mcdelivery-redesign Phase 4: read by the get_nudges tool.
+    "NudgesResponse": "nudges.v1.json",
 }
 
 # Nested object -> the Zod schema's own name (menuCategorySchema,
@@ -65,6 +67,7 @@ NESTED_TITLES: dict[tuple[str, ...], str] = {
     ("MenuResponse", "categories"): "MenuCategory",
     ("MenuResponse", "categories", "items"): "MenuItem",
     ("CartResponse", "items"): "CartLine",
+    ("NudgesResponse", "nudges"): "Nudge",
 }
 
 UI_COMMANDS_SCHEMA_DIR = CONTRACTS_ROOT / "ui-commands/schema"

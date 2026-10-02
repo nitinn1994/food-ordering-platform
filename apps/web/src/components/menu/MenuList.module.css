@@ -1,5 +1,72 @@
-.list section + section {
-  margin-top: 1.5rem;
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 36px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-warm);
+  color: var(--color-accent-strong);
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chip[aria-pressed="true"] {
+  border-color: var(--color-accent-strong);
+  background: var(--color-accent-strong);
+  color: var(--color-on-brand);
+}
+
+.featureChip {
+  border-color: transparent;
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-card);
+}
+
+/* The small square veg / non-veg symbol, as on the product cards. */
+.marker {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  background: var(--color-surface);
+}
+
+.marker::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.veg {
+  color: var(--color-veg);
+}
+
+.nonVeg {
+  color: var(--color-nonveg);
+}
+
+.section + .section {
+  margin-top: var(--space-6);
+}
+
+.section h2 {
+  margin: 0 0 var(--space-4);
+  font-size: 1.6rem;
 }
 
 .items {
@@ -7,5 +74,12 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-4);
+}
+
+@media (max-width: 640px) {
+  .items {
+    grid-template-columns: 1fr;
+  }
 }

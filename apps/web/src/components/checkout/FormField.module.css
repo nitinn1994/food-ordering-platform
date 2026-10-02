@@ -11,12 +11,12 @@
 .field input {
   width: 100%;
   min-height: 44px;
-  padding: 0.5rem;
+  padding: 0.5rem var(--space-3);
   font-size: 1rem;
 }
 
 .error {
-  color: #a00;
+  color: var(--color-danger);
   margin: 0;
   font-size: 0.875rem;
 }

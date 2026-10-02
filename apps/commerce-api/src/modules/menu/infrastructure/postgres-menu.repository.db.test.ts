@@ -11,6 +11,7 @@ import { seedMenu } from "../../../database/menu-seed";
 import { DatabaseUnavailableError } from "../../../database/persistence.errors";
 import { InMemoryMenuRepository } from "./in-memory-menu.repository";
 import { MENU_SEED } from "./menu.seed";
+import { DEMO_MENU_SEED } from "./demo-menu.seed";
 import { PostgresMenuRepository } from "./postgres-menu.repository";
 
 // PostgresMenuRepository against the real database
@@ -51,6 +52,16 @@ describe("PostgresMenuRepository", () => {
     }
     expect(await repository.findItemById("tiramisu")).toEqual(
       await new InMemoryMenuRepository().findItemById("tiramisu"),
+    );
+  });
+
+  it("round-trips the demo menu's presentation fields (mcdelivery-redesign Phase 2)", async () => {
+    // Instead of MENU_SEED, not beside it: both use category positions 0…n.
+    await resetDatabase(db);
+    await seedMenu(db, DEMO_MENU_SEED);
+    expect(await repository.listCategories()).toEqual(DEMO_MENU_SEED);
+    expect(await repository.findItemById("sharing-box")).toEqual(
+      DEMO_MENU_SEED.flatMap((category) => category.items).find((item) => item.id === "sharing-box"),
     );
   });
 
