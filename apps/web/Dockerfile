@@ -41,6 +41,7 @@ WORKDIR /app
 # beside it, as Next's standalone output requires.
 COPY --from=build --chown=root:root /repo/apps/web/.next/standalone ./
 COPY --from=build --chown=root:root /repo/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build --chown=root:root /repo/apps/web/public ./apps/web/public
 # The only path the server may write: Next's own cache (the compose file
 # mounts a tmpfs here so the rest of the filesystem can be read-only).
 RUN mkdir -p apps/web/.next/cache && chown node:node apps/web/.next/cache

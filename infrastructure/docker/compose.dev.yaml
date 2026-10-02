@@ -1,0 +1,271 @@
+# Hot-reload development stack: every app in a container, source mounted
+# from the host (docs/features/docker-environments/plan.md, Phase 3; usage:
+# docs/development/getting-started.md). Development only — staging and prod
+# use compose.prod.yaml, and nothing here is hardened.
+#
+#   cp infrastructure/docker/env/.env.dev.example infrastructure/docker/env/.env.dev
+#   docker compose -f infrastructure/docker/compose.dev.yaml \
+#     --env-file infrastructure/docker/env/.env.dev up -d --wait
+#   ... --env-file ... down      stop; dependencies and data are kept
+#   ... --env-file ... down -v   stop AND reset dependencies and the dev database
+#
+# Isolation from the host workflow (plan.md AC3):
+# - node_modules, the ai-service venv and apps/web/.next live in
+#   container-only volumes, so Linux-built dependencies and a containerized
+#   `next dev` never overwrite the host's.
+# - Apps run as the host user (DEV_UID/DEV_GID), so anything they write
+#   into the mounted source stays owned by you.
+# - commerce-api and the migrate/seed one-shot run vite-node directly, not
+#   the package scripts, and set every variable their config reads, so
+#   compose's values win. The host's apps/commerce-api/.env (and any
+#   .env.local / .env.development) is still mounted, and vite-node's own
+#   loadEnv fills in any key compose does not set: a key added there
+#   reaches these containers too (docker-environments review, finding 1).
+# - Every published port binds 127.0.0.1 only.
+#
+# The credentials are development-only placeholders, like compose.yaml's.
+# The dev database runs on its own volume and port (5433), so it can run
+# beside compose.yaml's.
+name: food-ordering-platform-dev
+
+x-node: &node
+  build:
+    context: ./dev
+    dockerfile: node.Dockerfile
+  image: food-ordering-platform-dev/node:local
+  user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
+  working_dir: /repo
+  volumes:
+    - ../..:/repo
+    - nm-root:/repo/node_modules
+    - nm-web:/repo/apps/web/node_modules
+    - nm-commerce-api:/repo/apps/commerce-api/node_modules
+    - nm-agent-intents:/repo/packages/contracts/agent-intents/node_modules
+    - nm-api-contracts:/repo/packages/contracts/api-contracts/node_modules
+    - nm-common:/repo/packages/contracts/common/node_modules
+    - nm-ui-commands:/repo/packages/contracts/ui-commands/node_modules
+    - web-next:/repo/apps/web/.next
+
+x-python: &python
+  build:
+    context: ./dev
+    dockerfile: python.Dockerfile
+  image: food-ordering-platform-dev/python:local
+  user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
+  volumes:
+    # ai-service writes nothing into its source, so the mount is read-only.
+    - ../..:/repo:ro
+    - ai-venv:/opt/venv
+    - uv-cache:/opt/uv-cache
+
+# Every variable commerce-api's config schema reads (src/config/env.schema.ts)
+# is set here or on the service, so nothing in the host's .env can override
+# it (vite-node still loads that file; see the header). The last four are
+# the schema's own defaults, pinned.
+x-commerce-env: &commerce-env
+  NODE_ENV: development
+  DATABASE_URL: postgres://commerce:${POSTGRES_PASSWORD:-commerce}@postgres:5432/commerce
+  DATABASE_POOL_MAX: ${DATABASE_POOL_MAX:-5}
+  LOG_LEVEL: ${COMMERCE_LOG_LEVEL:-debug}
+  LOG_FORMAT: ${LOG_FORMAT:-pretty}
+  DATABASE_SSL: disable
+  DATABASE_STATEMENT_TIMEOUT_MS: "10000"
+  ALLOW_LOOPBACK_DATABASE: "false"
+  TRUST_PROXY_HOPS: "0"
+
+services:
+  postgres:
+    image: postgres:18-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    environment:
+      POSTGRES_USER: commerce
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-commerce}
+      POSTGRES_DB: commerce
+    ports:
+      - "127.0.0.1:${DEV_DB_PORT:-5433}:5432"
+    volumes:
+      - dev-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U commerce -d commerce"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+
+  # One-shot: installs the workspace's dependencies into the node_modules
+  # volumes on every `up` (fast when the lockfile has not changed). Runs as
+  # root only to hand the fresh volumes to the dev user.
+  deps-node:
+    <<: *node
+    user: "0:0"
+    environment:
+      CI: "true"
+      HOME: /tmp
+    # The shared node volumes plus the pnpm store (YAML cannot merge lists).
+    volumes:
+      - ../..:/repo
+      - nm-root:/repo/node_modules
+      - nm-web:/repo/apps/web/node_modules
+      - nm-commerce-api:/repo/apps/commerce-api/node_modules
+      - nm-agent-intents:/repo/packages/contracts/agent-intents/node_modules
+      - nm-api-contracts:/repo/packages/contracts/api-contracts/node_modules
+      - nm-common:/repo/packages/contracts/common/node_modules
+      - nm-ui-commands:/repo/packages/contracts/ui-commands/node_modules
+      - web-next:/repo/apps/web/.next
+      - pnpm-store:/pnpm-store
+    command:
+      - sh
+      - -ec
+      - |
+        pnpm install --frozen-lockfile --store-dir /pnpm-store
+        chown -R "${DEV_UID:-1000}:${DEV_GID:-1000}" \
+          node_modules apps/web/node_modules apps/commerce-api/node_modules \
+          packages/contracts/*/node_modules apps/web/.next
+    restart: "no"
+
+  # One-shot: syncs ai-service's venv from uv.lock (dev group included, as
+  # on the host), then hands the volumes to the dev user.
+  deps-python:
+    <<: *python
+    user: "0:0"
+    environment:
+      HOME: /tmp
+    volumes:
+      - ../../apps/ai-service:/repo/apps/ai-service:ro
+      - ai-venv:/opt/venv
+      - uv-cache:/opt/uv-cache
+    command:
+      - sh
+      - -ec
+      - |
+        uv sync --locked
+        chown -R "${DEV_UID:-1000}:${DEV_GID:-1000}" /opt/venv /opt/uv-cache
+    restart: "no"
+
+  # One-shot: migrations, then the demo menu (an upsert, safe to repeat).
+  dev-migrate:
+    <<: *node
+    working_dir: /repo/apps/commerce-api
+    environment:
+      <<: *commerce-env
+      HOME: /tmp
+      # Not used (nothing listens), but the schema validates them.
+      HOST: 0.0.0.0
+      PORT: "3001"
+    command:
+      - sh
+      - -ec
+      - |
+        node ./node_modules/vite-node/vite-node.mjs src/database/cli/migrate.ts
+        node ./node_modules/vite-node/vite-node.mjs src/database/cli/seed.ts
+    restart: "no"
+    depends_on:
+      deps-node:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  commerce-api:
+    <<: *node
+    working_dir: /repo/apps/commerce-api
+    environment:
+      <<: *commerce-env
+      HOME: /tmp
+      HOST: 0.0.0.0
+      PORT: "3001"
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-true}
+    command: ["node", "./node_modules/vite-node/vite-node.mjs", "--watch", "src/main.ts"]
+    # vite-node --watch re-runs main.ts in the same process while the old
+    # server still holds the port, so a reload exits with EADDRINUSE (the
+    # host's `pnpm dev` does the same). Restarting the container is what
+    # actually loads the edit here.
+    #
+    # Known limit (plan.md, Phase 3 decision): on Docker Desktop, an editor
+    # that saves by rename ("atomic"/"safe write") leaves the container
+    # reading the old file, and this watcher never sees the change. Save in
+    # place (vim: `set backupcopy=yes`; JetBrains: turn off "safe write"),
+    # or run `docker compose ... restart commerce-api`.
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${COMMERCE_API_PORT:-3001}:3001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 5
+    depends_on:
+      dev-migrate:
+        condition: service_completed_successfully
+
+  ai-service:
+    <<: *python
+    working_dir: /repo/apps/ai-service
+    environment:
+      HOME: /tmp
+      APP_ENV: development
+      HOST: 0.0.0.0
+      PORT: "3002"
+      LOG_LEVEL: ${AI_LOG_LEVEL:-DEBUG}
+      LOG_FORMAT: ${LOG_FORMAT:-pretty}
+      COMMERCE_API_URL: http://commerce-api:3001
+      AGENT_TURN_TIMEOUT_SECONDS: ${AGENT_TURN_TIMEOUT_SECONDS:-20}
+      AGENT_MAX_CONCURRENT_TURNS: ${AGENT_MAX_CONCURRENT_TURNS:-4}
+    # The venv's own Python: deps-python already synced it, and uv must not
+    # try to write to it (or to the read-only source) from here. Without
+    # watchfiles installed, --reload polls, so it needs no polling switch.
+    command: ["/opt/venv/bin/python", "-m", "ai_service", "--reload"]
+    ports:
+      - "127.0.0.1:${AI_SERVICE_PORT:-3002}:3002"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys,urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:3002/health', timeout=2).status == 200 else 1)"]
+      interval: 5s
+      timeout: 3s
+      start_period: 30s
+      retries: 5
+    depends_on:
+      deps-python:
+        condition: service_completed_successfully
+      commerce-api:
+        condition: service_healthy
+
+  web:
+    <<: *node
+    environment:
+      HOME: /tmp
+      # Service names on the dev network; read by next.config.ts's rewrites
+      # and by Server Components.
+      COMMERCE_API_URL: http://commerce-api:3001
+      AI_SERVICE_URL: http://ai-service:3002
+      WATCHPACK_POLLING: ${WATCHPACK_POLLING:-true}
+    # The package's dev script binds 127.0.0.1, which is unreachable from
+    # outside a container; the published port is still loopback-only.
+    command: ["pnpm", "--filter", "web", "exec", "next", "dev", "-H", "0.0.0.0", "-p", "3000"]
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    healthcheck:
+      # The first request compiles the route, hence the long start period.
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 5s
+      timeout: 10s
+      start_period: 90s
+      retries: 5
+    depends_on:
+      deps-node:
+        condition: service_completed_successfully
+      commerce-api:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
+
+volumes:
+  dev-pgdata: {}
+  pnpm-store: {}
+  nm-root: {}
+  nm-web: {}
+  nm-commerce-api: {}
+  nm-agent-intents: {}
+  nm-api-contracts: {}
+  nm-common: {}
+  nm-ui-commands: {}
+  web-next: {}
+  ai-venv: {}
+  uv-cache: {}

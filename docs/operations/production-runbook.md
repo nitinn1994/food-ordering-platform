@@ -98,6 +98,9 @@ its value.
 | `TLS_CERT_DIR` | Host directory holding `fullchain.pem` and `privkey.pem`, mounted read-only into the proxy |
 | `RELEASE_TAG` | Image tag to run (default `latest`). Set it per release so a rollback is a tag change. |
 | `COMMERCE_LOG_LEVEL`, `AI_LOG_LEVEL` | Optional log levels |
+| `COMPOSE_PROJECT_NAME` | `food-ordering-platform-prod` or `-staging`. Overrides the file's `name:` so environments never share containers, networks or volumes. |
+
+Every variable with its suggested staging and prod value: `environment-variables.md`.
 
 ## 3. Secrets
 
@@ -108,6 +111,14 @@ its value.
   permissions, passed with `docker compose --env-file`. Never put them in
   an image, a build argument, or a committed file.
   `.dockerignore` excludes every `.env*` from build contexts.
+- Start the env file from the committed template
+  (`infrastructure/docker/env/.env.prod.example` or
+  `.env.staging.example`), which lists every variable and holds only
+  `CHANGE_ME` for secrets:
+  `sudo install -D -m 0600 -o deploy infrastructure/docker/env/.env.prod.example /etc/fop/prod/compose.env`
+  (`-D` creates `/etc/fop/prod`; `deploy` is the user that runs compose),
+  then fill it in. Generate the database password with
+  `openssl rand -hex 32`.
 - Database roles: use two.
   - `commerce_migrator` owns the schema and is used only by the `migrate`
     service.
@@ -178,6 +189,42 @@ docker compose -f infrastructure/docker/compose.prod.yaml ps   # all healthy; mi
 docker compose -f infrastructure/docker/compose.prod.yaml exec commerce-api \
   node -e "fetch('http://127.0.0.1:3001/health/ready').then(r=>r.text()).then(console.log)"
 ```
+
+### Staging
+
+Staging is a second server with the same shape as prod: the same compose
+file, images built from the same commit, its own hostname, TLS certificate
+and managed PostgreSQL (ADR-0028). Only the env file differs. There is no
+registry yet, so each server builds its own images: prod's are rebuilt
+from the commit staging tested, not copied from staging.
+
+1. Provision the server, DNS for the staging hostname, a certificate in
+   `/etc/fop/staging/certs`, and a managed PostgreSQL instance for staging
+   only. Never point staging at the prod database.
+2. Create the env file from `infrastructure/docker/env/.env.staging.example`
+   at `/etc/fop/staging/compose.env` (`0600`, see §3). Set `RELEASE_TAG` to
+   the release candidate.
+3. Deploy with the env file:
+
+   ```bash
+   E=/etc/fop/staging/compose.env
+   docker compose -f infrastructure/docker/compose.prod.yaml --env-file $E build
+   docker compose -f infrastructure/docker/compose.prod.yaml --env-file $E up -d --wait
+   # First deploy only: load the demo menu.
+   docker compose -f infrastructure/docker/compose.prod.yaml --env-file $E \
+     run --rm --no-deps migrate node dist/seed.js --allow-production
+   ```
+
+4. Run the **Verify** checks above against the staging host, adding
+   `--env-file $E` to each `docker compose` command. Without it, compose
+   uses the prod project name and sees no containers.
+5. Promote: check out the **same commit** on the prod server and deploy it
+   with the same `RELEASE_TAG`. The base images are pinned by digest, so
+   the rebuild uses the same toolchain; a registry that ships the one
+   tested image is a follow-up.
+
+To smoke-test either env file on one machine without a managed database,
+see `environment-variables.md` (`LOCAL_DB_PASSWORD`, `--profile local-db`).
 
 ## 5. Health checks
 

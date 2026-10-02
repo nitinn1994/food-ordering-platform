@@ -216,6 +216,90 @@ speech recognition and shows a "type instead" hint. Voice turns go through
 the same `/api/ai/v1/agent/turns` as typed ones, so ai-service must be
 running for a reply.
 
+### Run everything in Docker (dev)
+
+An alternative to running the apps on the host: one command starts
+PostgreSQL, commerce-api, ai-service and web in containers, with your
+source mounted and hot reload on (docs/features/docker-environments,
+ADR-0028). It needs only Docker with Compose v2. Every variable and its
+suggested value is in `docs/operations/environment-variables.md`.
+
+```bash
+cp infrastructure/docker/env/.env.dev.example infrastructure/docker/env/.env.dev
+docker compose -f infrastructure/docker/compose.dev.yaml \
+  --env-file infrastructure/docker/env/.env.dev up -d --wait
+```
+
+The first `up` installs every dependency into container volumes and takes a
+few minutes. Later ones take seconds. Each `up` also runs the migrations and
+the demo-menu seed (an upsert, safe to repeat).
+
+| Service | URL (127.0.0.1 only) |
+| --- | --- |
+| web | `http://127.0.0.1:3000` |
+| commerce-api | `http://127.0.0.1:3001` |
+| ai-service | `http://127.0.0.1:3002` |
+| PostgreSQL | `127.0.0.1:5433`, user/password/db `commerce` |
+
+With `C="docker compose -f infrastructure/docker/compose.dev.yaml --env-file infrastructure/docker/env/.env.dev"`:
+
+| Task | Command |
+| --- | --- |
+| Follow logs | `$C logs -f web commerce-api ai-service` |
+| Stop (keep dependencies and data) | `$C down` |
+| Reset everything: dependencies and the dev database | `$C down -v` |
+| Restart one app | `$C restart commerce-api` |
+| After a lockfile change | `$C up -d --wait` (the install step re-runs on every `up`) |
+
+It does not interfere with the host workflow. `node_modules`, the
+ai-service venv and `apps/web/.next` live in container-only volumes, the
+database is separate from `compose.yaml`'s. You can switch between the
+two, but not run both at once on the same ports: change the ports in
+`.env.dev`.
+
+One thing does cross over: `vite-node` loads `apps/commerce-api/.env` (and
+`.env.local`, `.env.development`) inside the container too. Every variable
+commerce-api's config reads is set by `compose.dev.yaml`, and those win,
+but any *other* key you add to that file also reaches the dev
+commerce-api and migrate containers. If a value there changes dev
+behaviour unexpectedly, that is where to look.
+
+Verified 2026-10-02 on Docker Desktop for Linux (Engine 29.7.2, Compose v5.4.0). Not yet tried on macOS, Windows or native Docker Engine.
+
+**Hot reload.** web and ai-service reload on every save. commerce-api
+restarts its container when a file changes; that takes about 3 s, and the
+restart count in `$C ps` goes up, which is expected. `vite-node --watch`
+cannot reload in place (the host's `pnpm dev` has the same limit: a
+recorded follow-up).
+
+**One editor caveat (Docker Desktop).** Docker Desktop's file sharing keeps
+showing containers the old contents of a file that was saved by *rename*
+(write a temp file, then rename it over the original). web and ai-service
+recover. commerce-api does not see the change. VS Code saves in place and is
+fine. Otherwise either:
+
+- save in place: vim `set backupcopy=yes`; JetBrains IDEs: turn off
+  "Use safe write" under *Settings → Appearance & Behavior → System
+  Settings*;
+- or run `$C restart commerce-api` after the edit.
+
+Troubleshooting:
+
+- **"port is already allocated"**: something on the host already uses that
+  port, often a host-run dev server. Stop it, or change `WEB_PORT`,
+  `COMMERCE_API_PORT`, `AI_SERVICE_PORT` or `DEV_DB_PORT` in `.env.dev`.
+- **`deps-node` exits with `ERR_PNPM_TARBALL_FETCH_TARBALL` or a DNS
+  error**: a network failure while downloading packages. Run `up` again;
+  downloaded packages are cached in a volume.
+- **Edits are not picked up at all**: check that `WATCHPACK_POLLING` and
+  `CHOKIDAR_USEPOLLING` are `true` in `.env.dev`, then `up -d` again.
+- **Files in the repo owned by root**: `DEV_UID`/`DEV_GID` don't match
+  `id -u`/`id -g`.
+- **`up --wait` hangs, or commerce-api keeps restarting**: commerce-api
+  restarts on exit (that is how its reload works), so a real startup
+  failure, such as a bad variable or the database being unreachable, loops
+  instead of failing fast. `$C logs commerce-api` shows why.
+
 ### Production images, reference stack and CI (Phase 18)
 
 Run from the repository root. Operating a deployment (environment

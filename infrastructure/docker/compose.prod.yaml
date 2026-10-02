@@ -1,10 +1,17 @@
-# Production reference topology (Phase 18, docs/features/phase-18-production-
-# hardening/plan.md §15, §26, AC26; runbook: docs/operations/production-
-# runbook.md). One host, one container per app, nginx as the only published
-# service. Nothing here is deployed by the repository.
+# Staging and production reference topology (Phase 18, docs/features/phase-
+# 18-production-hardening/plan.md §15, §26, AC26; runbook: docs/operations/
+# production-runbook.md). One host, one container per app, nginx as the only
+# published service. Nothing here is deployed by the repository.
 #
-#   docker compose -f infrastructure/docker/compose.prod.yaml build
-#   docker compose -f infrastructure/docker/compose.prod.yaml up -d --wait
+# Staging and prod run this same file; the env file chooses the environment
+# (docs/features/docker-environments/plan.md). Its COMPOSE_PROJECT_NAME
+# overrides `name:` below, so the two never share containers, networks or
+# volumes. Templates: infrastructure/docker/env/.env.{staging,prod}.example.
+#
+#   docker compose -f infrastructure/docker/compose.prod.yaml \
+#     --env-file /etc/fop/<staging|prod>/compose.env build
+#   docker compose -f infrastructure/docker/compose.prod.yaml \
+#     --env-file /etc/fop/<staging|prod>/compose.env up -d --wait
 #
 # Required from the environment (the host's secret store, or an env file
 # kept outside the repository with 0600 permissions, passed with

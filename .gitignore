@@ -28,6 +28,10 @@ coverage/
 .env
 .env.local
 .env.*.local
+# Real per-environment files (.env.dev, .env.staging, .env.prod) hold
+# secrets; only the committed *.example templates are tracked.
+.env.*
+!.env*.example
 
 # Editor and OS
 .DS_Store

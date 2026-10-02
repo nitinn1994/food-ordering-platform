@@ -2265,3 +2265,58 @@ and one turn path.
 - The suggested prompts in the sheet are taps, so they are sent through the
   turn and not spoken.
 
+
+## ADR-0028 — Docker environments: one prod-shaped compose for staging and prod, a separate hot-reload dev stack
+
+**Status:** Accepted · **Date:** 2026-10-02 (docker-environments) ·
+Extends ADR-0024 (does not supersede it)
+
+### Context
+
+ADR-0024 gave production one hardened compose file. There was no staging,
+no way to run the whole stack in containers for development, and no
+committed list of the variables each environment needs. `.gitignore` also
+missed `.env.staging` and `.env.prod`.
+
+### Decision
+
+1. **Staging and prod share `compose.prod.yaml`.** The env file is the
+   environment: `COMPOSE_PROJECT_NAME`, `RELEASE_TAG`, the database, TLS
+   directory, log levels and limits. `COMPOSE_PROJECT_NAME` overrides the
+   file's `name:` (verified), so the two never share containers, networks
+   or volumes. Staging runs on its own server with its own managed
+   PostgreSQL. There is no registry yet, so each host builds the images
+   itself: a release is promoted by deploying the same commit (and
+   `RELEASE_TAG`) to prod, which rebuilds it from the same pinned base
+   images. Pushing the one tested image through a registry is a follow-up.
+2. **Dev is a separate file, `compose.dev.yaml`.** Hot reload needs mounted
+   source, dev servers and writable filesystems, which prod must never
+   have, so dev reuses none of the hardened services. Dependencies,
+   `apps/web/.next` and the venv live in container-only volumes, the apps
+   run as the host user, compose sets every variable commerce-api reads
+   (so the host's `apps/commerce-api/.env`, which vite-node still loads,
+   cannot override them), and every port binds 127.0.0.1. `compose.yaml` (database only) stays for
+   the host workflow.
+3. **Secrets live in git-ignored env files** created from committed
+   `infrastructure/docker/env/.env.*.example` templates, which hold
+   `CHANGE_ME` only. Staging and prod files sit outside the repository with
+   `0600` permissions. No secret manager yet.
+4. **CI checks every compose file against its template**
+   (`docker compose ... config -q`), so a template that drops a required
+   variable, or a broken compose file, fails CI.
+
+### Consequences
+
+- Staging tests prod's configuration exactly: the only differences are
+  values in the env file. The images are rebuilt per host from the same
+  commit, not copied, so they are not byte-for-byte identical until a
+  registry exists.
+- One database URL is still used for both migrate and commerce-api. The
+  migration-owner / app-user split (runbook §3) is a recorded follow-up.
+- On Docker Desktop, file sharing hides rename-style ("atomic") saves from
+  containers. Polling is the dev default; web and ai-service recover, and
+  commerce-api needs in-place saves or a container restart
+  (getting-started, "Run everything in Docker").
+- `vite-node --watch` cannot reload commerce-api in place (EADDRINUSE, in
+  the host workflow too), so the dev container restarts on change. Fixing
+  that in `main.ts` is a recorded follow-up.

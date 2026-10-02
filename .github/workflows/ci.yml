@@ -122,6 +122,25 @@ jobs:
       - run: uv run pip-audit
         working-directory: apps/ai-service
 
+  compose:
+    name: Compose files — dev, staging and prod resolve
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # docker-environments OQ2: every environment's compose file resolves
+      # against its committed template. `config -q` only interpolates and
+      # validates; the templates hold placeholders, so no secret is needed.
+      - run: |
+          docker compose -f infrastructure/docker/compose.dev.yaml \
+            --env-file infrastructure/docker/env/.env.dev.example config -q
+          for env in staging prod; do
+            docker compose -f infrastructure/docker/compose.prod.yaml \
+              --env-file "infrastructure/docker/env/.env.$env.example" config -q
+          done
+
   images:
     name: Production images — build only, never pushed
     runs-on: ubuntu-24.04
