@@ -8,7 +8,7 @@
 
 .panel h2 {
   margin: 0 0 var(--space-3);
-  font-size: 1.3rem;
+  font-size: var(--font-size-md);
 }
 
 .panel p {
@@ -38,22 +38,29 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 44px;
+  min-height: 48px;
   margin-top: var(--space-3);
-  border-radius: var(--radius-sm);
-  background: var(--color-brand-yellow);
+  border-radius: var(--radius-md);
+  background: var(--color-brand-yellow-cta);
   color: var(--color-text);
   font-weight: var(--font-weight-heavy);
   text-decoration: none;
 }
 
 /* Narrow screens: a fixed bottom bar (AC-U2). */
-@media (max-width: 1023px) {
+@media (max-width: 1199.98px) {
+  /* The bar is fixed, so the page keeps room for it at its very end: the
+     last line of the page must be able to scroll clear of it
+     (mcdelivery-parity Phase 5; review-report.md finding 2). */
+  :global(body):has(.panel) {
+    padding-bottom: calc(var(--bottom-nav-space) + var(--cart-bar-height) + var(--space-2));
+  }
+
   .panel {
     position: fixed;
-    right: 0;
-    bottom: 0;
-    left: 0;
+    right: var(--tabbar-gap);
+    bottom: var(--bottom-nav-space);
+    left: var(--tabbar-gap);
     z-index: 15;
     display: flex;
     flex-wrap: wrap;
@@ -61,7 +68,7 @@
     gap: var(--space-1) var(--space-4);
     min-height: var(--cart-bar-height);
     padding: var(--space-2) var(--space-4);
-    border-radius: var(--radius-md) var(--radius-md) 0 0;
+    border-radius: var(--radius-md);
     box-shadow: var(--shadow-raised);
   }
 

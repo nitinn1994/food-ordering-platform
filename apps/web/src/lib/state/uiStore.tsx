@@ -8,12 +8,12 @@ import {
   type ReactNode,
 } from "react";
 import type { UiCommand } from "@contracts/ui-commands";
-import type { MenuItemFeature } from "@contracts/api-contracts";
 
-// The menu's chip filters (docs/features/mcdelivery-redesign/plan.md,
-// Phases 1–2). Presentation only, never commerce state.
+// The menu's Veg / Non-Veg chip filter (docs/features/mcdelivery-redesign/
+// plan.md, Phases 1–2). Presentation only, never commerce state. The
+// Popular / Deals / New Launch chips had a filter here too until they became
+// links to /tag/[feature] (mcdelivery-parity Phase 3; review finding 4).
 export type DietFilter = "veg" | "non-veg" | null;
-export type FeatureFilter = MenuItemFeature | null;
 
 // Durable UI state — unlike cartStore, this is meant to survive into the
 // real system. See docs/features/phase-1-web-foundation/plan.md §6.
@@ -36,7 +36,6 @@ export type UiState = {
   searchQuery: string;
   detailItemId: string | null;
   dietFilter: DietFilter;
-  featureFilter: FeatureFilter;
   // The last ShowNudge (mcdelivery-redesign Phase 4). Only a request: the
   // nudge itself is fetched from commerce-api and shown only if commerce-api
   // offers one with this id (NudgeToast). `sequence` makes a repeat of the
@@ -58,7 +57,6 @@ export type UiAction =
   | { type: "SET_CART_PANEL_OPEN"; open: boolean }
   | ({ type: "SET_SEARCH_QUERY"; query: string } & FromCommand)
   | { type: "SET_DIET_FILTER"; diet: DietFilter }
-  | { type: "SET_FEATURE_FILTER"; feature: FeatureFilter }
   | { type: "SHOW_NUDGE"; nudgeId: string }
   | { type: "SHOW_ITEM_DETAIL"; itemId: string | null }
   | { type: "LOG_COMMAND"; entry: CommandLogEntry };
@@ -70,14 +68,13 @@ export const initialUiState: UiState = {
   searchQuery: "",
   detailItemId: null,
   dietFilter: null,
-  featureFilter: null,
   requestedNudge: null,
   commandLog: [],
 };
 
 function withoutMenuFilters(state: UiState, action: FromCommand): UiState {
   return action.clearMenuFilters
-    ? { ...state, dietFilter: null, featureFilter: null }
+    ? { ...state, dietFilter: null }
     : state;
 }
 
@@ -93,8 +90,6 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
       return { ...withoutMenuFilters(state, action), searchQuery: action.query };
     case "SET_DIET_FILTER":
       return { ...state, dietFilter: action.diet };
-    case "SET_FEATURE_FILTER":
-      return { ...state, featureFilter: action.feature };
     case "SHOW_NUDGE":
       return {
         ...state,
@@ -123,7 +118,6 @@ type UiContextValue = UiState & {
   setSearchQuery: (query: string) => void;
   showItemDetail: (itemId: string | null) => void;
   setDietFilter: (diet: DietFilter) => void;
-  setFeatureFilter: (feature: FeatureFilter) => void;
   applyUiAction: (action: UiAction) => void;
   logCommand: (entry: CommandLogEntry) => void;
 };
@@ -143,8 +137,6 @@ export function UiProvider({ children }: { children: ReactNode }) {
       showItemDetail: (itemId: string | null) =>
         dispatch({ type: "SHOW_ITEM_DETAIL", itemId }),
       setDietFilter: (diet: DietFilter) => dispatch({ type: "SET_DIET_FILTER", diet }),
-      setFeatureFilter: (feature: FeatureFilter) =>
-        dispatch({ type: "SET_FEATURE_FILTER", feature }),
       applyUiAction: (action: UiAction) => dispatch(action),
       logCommand: (entry: CommandLogEntry) =>
         dispatch({ type: "LOG_COMMAND", entry }),

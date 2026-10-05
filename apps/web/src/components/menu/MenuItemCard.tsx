@@ -29,9 +29,13 @@ export function MenuItemCard({ item }: { item: MenuItem }) {
 
   return (
     <li
-      className={
-        isHighlighted ? `${styles.card} ${styles.highlighted}` : styles.card
-      }
+      className={[
+        styles.card,
+        isHighlighted ? styles.highlighted : null,
+        item.available ? null : styles.unavailable,
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       {item.badge !== undefined && (
         <span className={styles.badge}>{BADGE_LABELS[item.badge]}</span>
@@ -60,23 +64,27 @@ export function MenuItemCard({ item }: { item: MenuItem }) {
         <p className={styles.description}>{item.description}</p>
         <p className={styles.price}>{formatCents(item.priceCents)}</p>
       </button>
-      <button
-        type="button"
-        className={styles.addButton}
-        onClick={() => addItem(item.id)}
-        disabled={!item.available || pending !== null}
-        aria-label={item.available && !isAdding ? "Add to cart" : undefined}
-      >
-        {!item.available ? (
-          "Unavailable"
-        ) : isAdding ? (
-          "Adding…"
-        ) : (
-          <>
-            Add <span aria-hidden="true">+</span>
-          </>
-        )}
-      </button>
+      {/* Sold out: no Add button at all, as on the reference
+          (mcdelivery-parity AC6) — commerce-api would refuse it anyway. */}
+      {item.available ? (
+        <button
+          type="button"
+          className={styles.addButton}
+          onClick={() => addItem(item.id)}
+          disabled={pending !== null}
+          aria-label={isAdding ? undefined : "Add to cart"}
+        >
+          {isAdding ? (
+            "Adding…"
+          ) : (
+            <>
+              Add <span aria-hidden="true">+</span>
+            </>
+          )}
+        </button>
+      ) : (
+        <p className={styles.soldOut}>Sold out</p>
+      )}
       <p className={styles.meta}>
         <span>
           {item.allergens.length > 0

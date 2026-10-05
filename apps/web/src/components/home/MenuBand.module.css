@@ -7,13 +7,64 @@
   margin: var(--space-6) 0 var(--space-5);
 }
 
+.heading {
+  display: grid;
+  gap: var(--space-4);
+}
+
 .title {
   margin: 0;
-  font-size: clamp(2rem, 4vw, 2.75rem);
+  font-size: clamp(2rem, 4vw, var(--font-size-page));
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The reference's white pill chips with a small yellow outline glyph. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 38px;
+  padding: 0 15px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: var(--shadow-chip);
+}
+
+.chip:hover {
+  background: var(--color-brand-yellow-tint);
+}
+
+.chipIcon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: var(--color-brand-yellow-dark);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .search {
   flex: 0 1 380px;
+}
+
+/* Mobile: Quick Picks above already lead to the same pages. */
+@media (max-width: 1199.98px) {
+  .chips {
+    display: none;
+  }
 }
 
 @media (max-width: 640px) {

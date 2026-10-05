@@ -126,6 +126,21 @@
   background: var(--color-brand-yellow-dark);
 }
 
+/* Sold out (mcdelivery-parity AC6): greyscale picture, red label. */
+.unavailable .image {
+  filter: grayscale(1);
+  opacity: 0.7;
+}
+
+.soldOut {
+  margin: 0;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  color: var(--color-danger);
+  font-weight: var(--font-weight-heavy);
+}
+
 .addButton:disabled {
   background: var(--color-border);
   color: var(--color-muted);
@@ -141,4 +156,98 @@
   border-top: 1px solid var(--color-border);
   color: var(--color-muted);
   font-size: 0.75rem;
+}
+
+/* Below 1200px: the reference's mobile list row — text on the left, the
+   picture on the right with the Add button overlapping its lower edge
+   (docs/features/mcdelivery-parity/reference-inventory.md M2). DOM order
+   is unchanged, so reading and tab order stay name → Add. */
+@media (max-width: 1199.98px) {
+  .card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 112px;
+    gap: 0 var(--space-3);
+    padding: var(--space-3);
+  }
+
+  .badge {
+    position: static;
+    grid-column: 1;
+    justify-self: start;
+    margin: 0 0 var(--space-1) 22px;
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-xs);
+    font-size: 0.6875rem;
+  }
+
+  .marker {
+    top: var(--space-3);
+    right: auto;
+    left: var(--space-3);
+  }
+
+  .detailsButton {
+    grid-column: 1 / -1;
+    grid-template-columns: minmax(0, 1fr) 112px;
+    grid-template-areas:
+      "name image"
+      "price image"
+      "description image";
+    column-gap: var(--space-3);
+  }
+
+  /* Clear of the marker when there is no badge row beside it. */
+  .card:not(:has(.badge)) .detailsButton {
+    padding-top: 22px;
+  }
+
+  .image {
+    grid-area: image;
+    height: 96px;
+    margin: 0;
+    border-radius: var(--radius-md);
+    background: var(--color-surface-warm);
+  }
+
+  .image svg,
+  .image img {
+    width: 80%;
+  }
+
+  .name {
+    grid-area: name;
+    font-size: var(--font-size-body);
+  }
+
+  .price {
+    grid-area: price;
+    margin: 0;
+    font-size: var(--font-size-body);
+  }
+
+  .description {
+    grid-area: description;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    font-size: var(--font-size-xs);
+  }
+
+  .addButton,
+  .soldOut {
+    grid-column: 2;
+    width: 92px;
+    min-height: 36px;
+    margin: -20px auto 0;
+    padding: 0 var(--space-2);
+    position: relative;
+    z-index: 1;
+    box-shadow: var(--shadow-card);
+  }
+
+  .meta {
+    grid-column: 1 / -1;
+    margin-top: var(--space-2);
+  }
 }

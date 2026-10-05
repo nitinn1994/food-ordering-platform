@@ -2,6 +2,7 @@
 
 import type { MenuCategory } from "@contracts/api-contracts";
 import { useUi } from "../../lib/state/uiStore";
+import { useSelectedCategory } from "../../lib/menu/routeCategory";
 import { CategoryInitial } from "../brand/illustrations";
 import styles from "./CategoryFilter.module.css";
 
@@ -10,7 +11,8 @@ export function CategoryFilter({
 }: {
   categories: readonly MenuCategory[];
 }) {
-  const { selectedCategory, selectCategory } = useUi();
+  const { selectCategory } = useUi();
+  const selectedCategory = useSelectedCategory();
 
   // The reference design's left category rail (a horizontal scroller on
   // narrow screens). Selecting still filters, as before: ShowMenuCategory

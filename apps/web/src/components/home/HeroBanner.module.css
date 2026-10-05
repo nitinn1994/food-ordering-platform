@@ -1,56 +1,162 @@
+/* Full width: page.tsx renders the hero outside the centred container. */
 .hero {
+  position: relative;
+  margin-bottom: 52px; /* room for the thumbnails below the band */
+}
+
+.strip {
+  height: 20px;
+  background: var(--color-brand-yellow-cta);
+}
+
+.band {
+  position: relative;
+  padding: 20px 30px 40px;
+  background: var(--color-ink);
+}
+
+.slide {
   display: grid;
-  grid-template-columns: 1fr minmax(0, 320px);
+  grid-template-columns: 1fr minmax(0, 280px);
   align-items: center;
   gap: var(--space-5);
-  padding: var(--space-5) var(--space-6);
-  border-radius: var(--radius-lg);
+  min-height: 177px;
+  max-width: 1366px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-6);
+  overflow: hidden;
+}
+
+/* Each tone keeps its text at 4.5:1 or better (globals.test.ts pairs). */
+.red {
   background:
     radial-gradient(circle at 85% 30%, rgb(255 255 255 / 18%), transparent 45%),
     var(--color-brand-red);
   color: var(--color-on-brand);
-  overflow: hidden;
+}
+
+.yellow {
+  background:
+    radial-gradient(circle at 85% 30%, rgb(255 255 255 / 30%), transparent 45%),
+    var(--color-brand-yellow);
+  color: var(--color-text);
+}
+
+.brown {
+  background:
+    radial-gradient(circle at 85% 30%, rgb(255 255 255 / 14%), transparent 45%),
+    var(--color-accent-strong);
+  color: var(--color-on-brand);
 }
 
 .copy p {
   margin: 0;
 }
 
-/* White, not brand yellow: yellow on the red banner is 3.13:1, below the
-   4.5:1 small text needs (review-report.md finding 1). */
+/* Never brand yellow on the red slide: 3.13:1, below 4.5:1 (review-report.md
+   finding 1, enforced in globals.test.ts). */
 .eyebrow {
-  color: var(--color-on-brand);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
 }
 
 .copy .headline {
   margin-top: var(--space-2);
-  font-size: clamp(1.6rem, 3.5vw, 2.6rem);
+  font-size: clamp(1.6rem, 3.5vw, 2.75rem);
   font-weight: var(--font-weight-heavy);
   line-height: 1.1;
 }
 
 .copy .tagline {
-  margin-top: var(--space-3);
+  margin-top: var(--space-2);
   font-size: 1.05rem;
 }
 
-.art svg {
+.art {
+  display: grid;
+  place-items: center;
+}
+
+.art svg,
+.art img {
   display: block;
   width: 100%;
-  height: auto;
+  max-height: 150px;
+  object-fit: contain;
+}
+
+/* The thumbnail strip overlaps the band's lower edge, centred. */
+.thumbs {
+  position: absolute;
+  left: 50%;
+  bottom: -40px;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  transform: translateX(-50%);
+}
+
+.thumb {
+  display: grid;
+  place-items: center;
+  width: 100px;
+  height: 60px;
+  padding: 5px;
+  border: 2px solid var(--color-on-ink);
+  border-radius: 5px;
+  font-size: 0.55rem;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.thumb[aria-pressed="true"] {
+  width: 130px;
+  height: 80px;
+  font-size: 0.7rem;
+}
+
+/* Below 1200px the reference's hero sits straight under the red toolbar:
+   no strip and no black band. */
+@media (max-width: 1199.98px) {
+  .strip {
+    display: none;
+  }
+
+  .band {
+    padding: var(--space-3) var(--space-3) 36px;
+    background: none;
+  }
+
+  .slide {
+    border-radius: 16px;
+  }
 }
 
 @media (max-width: 640px) {
-  .hero {
+  /* The reference's mobile hero is a tall, picture-led slide. */
+  .slide {
     grid-template-columns: 1fr;
+    min-height: 260px;
     padding: var(--space-4);
   }
 
-  .art {
-    display: none;
+  .art svg,
+  .art img {
+    max-height: 120px;
+  }
+
+  .thumb {
+    width: 72px;
+    height: 44px;
+  }
+
+  .thumb[aria-pressed="true"] {
+    width: 92px;
+    height: 56px;
   }
 }

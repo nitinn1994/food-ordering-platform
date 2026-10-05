@@ -3,7 +3,7 @@
 import { startTransition } from "react";
 import { useRouter } from "next/navigation";
 import { BRAND_NAME } from "../lib/brand";
-import styles from "./page.module.css";
+import styles from "./shell.module.css";
 
 // Next.js renders this automatically if page.tsx's async work (getMenu())
 // rejects, or anything below the root layout throws — on /cart and

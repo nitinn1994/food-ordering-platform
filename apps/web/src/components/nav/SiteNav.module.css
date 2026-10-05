@@ -3,18 +3,26 @@
   top: 0;
   z-index: 20;
   background: var(--color-surface);
-  box-shadow: var(--shadow-header);
-  border-bottom: 4px solid var(--color-brand-yellow);
+  box-shadow: var(--shadow-header), inset 0 -1px 0 var(--color-divider);
 }
 
 .inner {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  max-width: var(--content-max-width);
   min-height: var(--header-height);
   margin: 0 auto;
   padding: var(--space-2) var(--space-4);
+}
+
+.inner svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .brand {
@@ -23,6 +31,13 @@
   gap: var(--space-2);
   color: var(--color-text);
   text-decoration: none;
+}
+
+/* BrandLogo sizes itself; the shared icon rule must not shrink it. */
+.inner .brand svg {
+  width: auto;
+  height: auto;
+  stroke: none;
 }
 
 .brandName {
@@ -40,23 +55,45 @@
   border-radius: var(--radius-md);
   background: var(--color-brand-red);
   color: var(--color-on-brand);
+  font-size: var(--font-size-sm);
   font-weight: 700;
   box-shadow: var(--shadow-raised);
   cursor: default;
 }
 
+.modeIcon,
+.pin,
+.clock {
+  display: inline-grid;
+  place-items: center;
+}
+
+.inner .modeIcon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.chevron {
+  margin-left: var(--space-1);
+}
+
 .locationPill {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-3);
   min-height: 56px;
-  max-width: 22rem;
+  max-width: 23.5rem;
   padding: var(--space-1) var(--space-4);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-divider);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   text-align: left;
   cursor: default;
+}
+
+.pin,
+.clock {
+  color: var(--color-brand-yellow-dark);
 }
 
 .locationText {
@@ -67,28 +104,57 @@
 .locationText span {
   overflow: hidden;
   color: var(--color-muted);
-  font-size: 0.85rem;
+  font-size: var(--font-size-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .when {
+  display: grid;
+  justify-items: center;
   padding-left: var(--space-3);
-  border-left: 1px solid var(--color-border);
-  font-weight: 700;
+  border-left: 1px solid var(--color-divider);
+  font-size: var(--font-size-sm);
+}
+
+.inner .clock svg {
+  width: 16px;
+  height: 16px;
 }
 
 .spacer {
   flex: 1;
 }
 
+.divider {
+  align-self: center;
+  width: 1px;
+  height: 24px;
+  background: var(--color-text);
+}
+
 .textLink {
+  display: inline-flex;
+  align-items: center;
   min-height: 44px;
   padding: 0 var(--space-2);
-  border: none;
-  background: none;
+  color: var(--color-text);
+  font-size: var(--font-size-nav);
   font-weight: 700;
-  cursor: default;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.textLink:hover,
+.textLink[aria-current="page"] {
+  text-decoration: underline;
+  text-decoration-color: var(--color-brand-yellow);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 0.35rem;
+}
+
+.inner > .iconButton[aria-current="page"] {
+  background: var(--color-brand-yellow-tint);
 }
 
 .nav {
@@ -97,26 +163,44 @@
   gap: var(--space-2);
 }
 
-.nav a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-pill);
+.iconButton,
+.cartLink {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: none;
   color: var(--color-text);
-  font-weight: 700;
-  text-decoration: none;
+  cursor: default;
 }
 
-.nav a[aria-current="page"] {
-  text-decoration: underline;
-  text-decoration-color: var(--color-brand-yellow);
-  text-decoration-thickness: 3px;
-  text-underline-offset: 0.35rem;
+a.iconButton,
+.cartLink {
+  cursor: pointer;
 }
 
-.nav .cartLink {
+.nav [aria-current="page"] {
+  background: var(--color-brand-yellow-tint);
+}
+
+.badge {
+  position: absolute;
+  top: 2px;
+  right: 0;
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
   background: var(--color-brand-yellow);
+  color: var(--color-text);
+  font-size: var(--font-size-2xs);
+  font-weight: 700;
+  line-height: 1;
 }
 
 .voice {
@@ -133,56 +217,77 @@
   cursor: pointer;
 }
 
-.iconButton {
-  display: inline-grid;
-  place-items: center;
-  width: 44px;
-  height: 44px;
-  border: none;
-  border-radius: 50%;
-  background: none;
-  cursor: default;
-}
-
-.iconButton svg {
-  width: 24px;
-  height: 24px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.8;
-}
-
-@media (max-width: 1100px) {
-  .textLink {
-    display: none;
-  }
-}
-
-@media (max-width: 860px) {
-  .locationPill,
-  .brandName {
-    display: none;
-  }
-}
-
-/* The floating microphone (VoiceShell) takes over on narrow screens. */
-@media (max-width: 640px) {
-  .voice {
-    display: none;
-  }
-}
-
-@media (max-width: 480px) {
+/* Desktop (mcdelivery-parity AC2): 96px, the reference's 70px side
+   padding and wider groups. */
+@media (min-width: 1200px) {
+  /* The reference's 70px side padding at 1440, scaling down so that the
+     header still fits on one line at 1200 (AC2, AC3). */
   .inner {
-    gap: var(--space-2);
+    gap: clamp(var(--space-3), 1.7vw, var(--space-5));
+    padding: 15px clamp(var(--space-4), calc(29vw - 348px), 70px);
+  }
+
+  .modePill,
+  .locationPill {
+    min-height: 66px;
   }
 
   .modePill {
-    padding: 0 var(--space-3);
+    min-width: 176px;
   }
 
-  .iconButton {
-    display: none;
+  .textLink {
+    padding: 0 var(--space-3);
   }
 }
 
+/* Our header carries two controls the reference does not (the brand name
+   and Talk), so the name gives way first on narrower desktops. */
+@media (min-width: 1200px) and (max-width: 1359.98px) {
+  .brandName {
+    display: none;
+  }
+
+  .locationPill {
+    max-width: 18rem;
+  }
+
+  .textLink {
+    padding: 0 var(--space-1);
+  }
+}
+
+/* mcdelivery-parity AC3, AC4: below 1200px the desktop bar gives way to
+   the mobile toolbar or "‹ Back" bar; the tab bar (MobileTabBar) takes the
+   links and the floating microphone (VoiceShell) the voice entry. */
+.mobile {
+  display: none;
+}
+
+@media (max-width: 1199.98px) {
+  .header {
+    background: none;
+    box-shadow: none;
+  }
+
+  .inner {
+    display: none;
+  }
+
+  .mobile {
+    display: block;
+  }
+}
+
+/* Read by screen readers, not shown. */
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

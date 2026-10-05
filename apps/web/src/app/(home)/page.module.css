@@ -1,0 +1,29 @@
+/* loading.tsx's centred column (the pre-Phase-1 page width). */
+.main {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4) var(--space-6);
+}
+
+/* The SEO text block below the menu (mcdelivery-parity Phase 1). */
+.about {
+  padding: 40px 50px;
+  background: var(--color-surface);
+}
+
+.about h2 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-md);
+}
+
+.about p {
+  max-width: 80rem;
+  margin: 0 0 var(--space-3);
+  line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  .about {
+    padding: var(--space-5) var(--space-4);
+  }
+}

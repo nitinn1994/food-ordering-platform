@@ -1,0 +1,68 @@
+/* The hero and the bands below the menu are full width; .container
+   centres the menu between them (mcdelivery-parity Phases 1 and 3). */
+.container {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 0 var(--space-4) var(--space-6);
+}
+
+.layout {
+  display: grid;
+  /* The reference's 232px rail and 374px cart column (reference-inventory.md §1). */
+  grid-template-columns: 232px minmax(0, 1fr) 374px;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.rail,
+.side {
+  position: sticky;
+  top: calc(var(--header-height) + var(--space-4));
+  max-height: calc(100vh - var(--header-height) - var(--space-6));
+  overflow-y: auto;
+}
+
+.content {
+  min-width: 0;
+}
+
+
+/* Below 1200px: the reference's two-pane mobile menu — a narrow sticky
+   category rail beside the item list (mcdelivery-parity Phase 2). The rail
+   sits beside the cards, not over them, so unlike the old horizontal strip
+   it hides nothing that is focused (review-report.md finding 2). The item
+   detail, cart and command log span both columns below. */
+@media (max-width: 1199.98px) {
+  .container {
+    padding: 0 var(--space-3) var(--space-6);
+  }
+
+  .layout {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  /* Ends above the floating microphone (56px + its gap, VoiceShell.module.css),
+     which sits over the rail's column. */
+  .rail {
+    top: var(--header-height);
+    max-height: calc(
+      100dvh - var(--header-height) - var(--bottom-nav-space) - var(--cart-bar-height) -
+        56px - 2 * var(--space-3)
+    );
+  }
+
+  /* Sticky elements stay stuck for their whole containing block — the
+     layout grid, this row included — so the rail would ride over this full-
+     width row as it scrolls up. Painted above the rail on the page's own
+     background, the row covers it instead (mcdelivery-parity Phase 5). */
+  .side {
+    grid-column: 1 / -1;
+    position: relative;
+    z-index: 2;
+    max-height: none;
+    overflow: visible;
+    padding-top: var(--space-3);
+    background: var(--color-bg);
+  }
+}

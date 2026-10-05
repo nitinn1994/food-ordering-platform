@@ -1,0 +1,23 @@
+.columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.links {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.links a {
+  color: var(--color-focus);
+}
+
+@media (max-width: 1199.98px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

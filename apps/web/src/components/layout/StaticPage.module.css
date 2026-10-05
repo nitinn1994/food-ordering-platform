@@ -1,0 +1,41 @@
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4) var(--space-6);
+}
+
+.wide {
+  max-width: var(--content-max-width);
+}
+
+.title {
+  margin: 0 0 var(--space-3);
+  font-size: clamp(2rem, 5vw, var(--font-size-display));
+  line-height: 1.1;
+}
+
+.intro {
+  margin: 0 0 var(--space-5);
+  color: var(--color-muted);
+  font-size: var(--font-size-price);
+}
+
+/* Shared prose styles for the static pages. */
+.page h2 {
+  margin: var(--space-5) 0 var(--space-2);
+  font-size: var(--font-size-md);
+}
+
+.page p {
+  line-height: 1.6;
+}
+
+@media (max-width: 1199.98px) {
+  .page {
+    padding: var(--space-4) var(--space-4) var(--space-6);
+  }
+
+  .title {
+    font-size: var(--font-size-xl);
+  }
+}

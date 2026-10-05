@@ -59,29 +59,33 @@
   color: var(--color-text);
 }
 
-@media (max-width: 1023px) {
+/* Below 1200px: the reference's 68px mobile rail — thumbnail over a small
+   name, a yellow bar on the active one. */
+@media (max-width: 1199.98px) {
   .filter {
-    display: flex;
-    gap: var(--space-2);
-    padding: var(--space-2);
-    overflow-x: auto;
-    scrollbar-width: thin;
+    gap: 0;
+    padding: var(--space-1) 0;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
   }
 
   .filter button {
-    flex: none;
     flex-direction: column;
     gap: var(--space-1);
-    width: auto;
-    min-width: 84px;
-    padding: var(--space-2);
-    border-right: none;
-    border-bottom: 4px solid transparent;
-    font-size: 0.85rem;
+    min-height: 0;
+    padding: var(--space-2) var(--space-1);
+    border-right-width: 3px;
+    font-size: 0.6875rem;
+    line-height: 1.15;
     text-align: center;
   }
 
-  .filter .active {
-    border-bottom-color: var(--color-brand-yellow);
+  .thumb {
+    width: 44px;
+    height: 44px;
+    font-size: 1rem;
+  }
+
+  .thumb img {
+    width: 34px;
   }
 }

@@ -1,13 +1,14 @@
-/* The floating microphone: narrow screens only, bottom left, above the
-   fixed cart bar. The header microphone covers wide screens. */
+/* The floating microphone: below the 1200px desktop breakpoint, bottom
+   left, above the tab bar and the fixed cart bar (mcdelivery-parity
+   Phase 2). The header microphone covers desktop. */
 .fab {
   display: none;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 1199.98px) {
   .fab {
     position: fixed;
-    bottom: calc(var(--cart-bar-height) + var(--space-3));
+    bottom: calc(var(--bottom-nav-space) + var(--cart-bar-height) + var(--space-3));
     left: var(--space-3);
     z-index: 18;
     display: grid;

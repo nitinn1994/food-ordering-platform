@@ -54,14 +54,15 @@ describe("MenuList — AC11 (real card wiring, not just ItemDetailPanel in isola
     );
     const user = userEvent.setup();
 
-    expect(screen.queryByRole("region")).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", { name: "View details for Tiramisu" }),
     );
 
+    // mcdelivery-parity AC7: the detail is a modal dialog now.
     expect(
-      screen.getByRole("region", { name: "Tiramisu details" }),
+      screen.getByRole("dialog", { name: "Tiramisu" }),
     ).toHaveTextContent(/espresso-soaked ladyfingers/i);
   });
 });
@@ -128,41 +129,29 @@ describe("MenuList — Veg / Non-Veg chips (mcdelivery-redesign AC-U4)", () => {
     expect(screen.getByText("Soup of the Day")).toBeInTheDocument();
     expect(screen.queryByText("Garlic Bread")).not.toBeInTheDocument();
   });
-});
 
-describe("MenuList — Popular / Deals / New Launch chips (mcdelivery-redesign Phase 2)", () => {
-  const FEATURED: readonly MenuCategory[] = MENU.map((category) => ({
-    ...category,
-    items: category.items.map((item) =>
-      item.id === "tiramisu" ? { ...item, featured: ["deal" as const] } : item,
-    ),
-  }));
+  // Was covered by the removed Deals + Non-Veg case (mcdelivery-parity
+  // review finding 4); the diet chip alone can empty a menu too.
+  it("says when the chip leaves nothing", async () => {
+    const onlyNonVeg: MenuCategory[] = MENU.map((category) => ({
+      ...category,
+      items: category.items.filter((item) => item.id === "soup-of-the-day"),
+    })).filter((category) => category.items.length > 0);
+    renderWithProviders(onlyNonVeg);
 
-  it("offers only the chips the menu can fill, and filters by the one pressed", async () => {
-    renderWithProviders(FEATURED);
-    const user = userEvent.setup();
-
-    expect(screen.queryByRole("button", { name: "Popular" })).not.toBeInTheDocument();
-    const deals = screen.getByRole("button", { name: "Deals" });
-    await user.click(deals);
-
-    expect(deals).toHaveAttribute("aria-pressed", "true");
-    expect(screen.getByText("Tiramisu")).toBeInTheDocument();
-    expect(screen.queryByText("Garlic Bread")).not.toBeInTheDocument();
-  });
-
-  it("says when the combined filters leave nothing", async () => {
-    renderWithProviders(FEATURED);
-    const user = userEvent.setup();
-
-    await user.click(screen.getByRole("button", { name: "Deals" }));
-    await user.click(screen.getByRole("button", { name: "Non-Veg" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Veg" }));
 
     expect(screen.getByRole("status")).toHaveTextContent("No items match these filters.");
   });
+});
 
-  it("renders no featured chips for a menu without featured items", () => {
+// mcdelivery-parity Phase 3: the Popular / Deals / New Launch chips moved
+// to MenuBand as links to /tag/[feature] (MenuBand.test.tsx), and their
+// filter was removed (review finding 4).
+describe("MenuList — featured chips moved out", () => {
+  it("renders no featured chips of its own", () => {
     renderWithProviders(MENU);
     expect(screen.queryByRole("group", { name: "Featured" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Deals" })).not.toBeInTheDocument();
   });
 });

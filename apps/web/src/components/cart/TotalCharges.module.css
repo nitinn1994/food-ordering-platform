@@ -1,0 +1,36 @@
+.charges {
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.charges summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 0 var(--space-4);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rows {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.rows div {
+  display: flex;
+  justify-content: space-between;
+  padding: var(--space-2) 0;
+}
+
+.rows dt,
+.rows dd {
+  margin: 0;
+}
+
+.toPay {
+  border-top: 1px dashed var(--color-border-strong);
+  font-weight: var(--font-weight-heavy);
+}

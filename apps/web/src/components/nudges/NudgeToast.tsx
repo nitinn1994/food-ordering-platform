@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Nudge } from "@contracts/api-contracts";
-import { useCart, type PendingCartOp } from "../../lib/state/cartStore";
+import { useCart } from "../../lib/state/cartStore";
+import { useConfirmedAdd } from "../../lib/cart/useConfirmedAdd";
 import { useUi } from "../../lib/state/uiStore";
 import { getNudges } from "../../lib/nudges/nudgeSource";
 import { useNudgeSession } from "../../lib/nudges/NudgeProvider";
@@ -20,14 +21,13 @@ import styles from "./NudgeToast.module.css";
 //    screen shows are therefore always commerce-api's same nudge.
 //
 // It stays until the customer chooses: no timer hides it. Only on the menu
-// page (app/page.tsx), so never on checkout (AC-N3).
+// pages (components/menu/MenuLayout.tsx), so never on checkout (AC-N3).
 export function NudgeToast() {
-  const { cart, pending, addItem } = useCart();
+  const { pending, addItem } = useCart();
   const { requestedNudge, logCommand } = useUi();
   const session = useNudgeSession();
   const [nudge, setNudge] = useState<Nudge | null>(null);
-  const previousPending = useRef<PendingCartOp | null>(null);
-  const [addedItem, setAddedItem] = useState<{ itemId: string; sequence: number } | null>(null);
+  const addedItem = useConfirmedAdd();
 
   // Read through refs, so the effects below never re-run because of them:
   // useUi()'s functions are new on every uiStore change, and re-running the
@@ -80,19 +80,6 @@ export function NudgeToast() {
       },
     });
   }
-
-  // A finished add of an item now in the confirmed cart is a successful add.
-  useEffect(() => {
-    const was = previousPending.current;
-    previousPending.current = pending;
-    if (
-      was?.op === "add" &&
-      pending === null &&
-      cart?.items.some((line) => line.itemId === was.itemId)
-    ) {
-      setAddedItem((previous) => ({ itemId: was.itemId, sequence: (previous?.sequence ?? 0) + 1 }));
-    }
-  }, [pending, cart]);
 
   useEffect(() => {
     if (addedItem === null) return;

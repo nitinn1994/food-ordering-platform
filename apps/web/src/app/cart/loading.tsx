@@ -1,7 +1,7 @@
 import styles from "./page.module.css";
 
 // Next.js renders this automatically while page.tsx's async work (getMenu())
-// is pending — same convention as app/loading.tsx.
+// is pending — same convention as app/(home)/loading.tsx.
 export default function Loading() {
   return (
     <main className={styles.main} aria-busy="true">

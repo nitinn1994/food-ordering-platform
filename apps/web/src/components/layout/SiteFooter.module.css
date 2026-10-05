@@ -1,0 +1,47 @@
+.footer {
+  padding: 50px 70px;
+  background: var(--color-ink);
+  color: var(--color-on-ink);
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  list-style: none;
+}
+
+/* "Privacy Policy | Terms & Conditions | …" */
+.links li + li::before {
+  content: "|";
+  padding: 0 var(--space-3);
+}
+
+.links a {
+  color: var(--color-on-ink);
+  font-size: var(--font-size-body);
+  text-decoration: none;
+}
+
+.links a:hover {
+  text-decoration: underline;
+}
+
+.note {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-xs);
+}
+
+.copyright {
+  margin: 0;
+  font-weight: 700;
+}
+
+/* The reference has no site footer below its desktop breakpoint; the
+   account page links the same pages there (mcdelivery-parity Phase 4). */
+@media (max-width: 1199.98px) {
+  .footer {
+    display: none;
+  }
+}

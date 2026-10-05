@@ -4,11 +4,7 @@ import type { MenuCategory } from "@contracts/api-contracts";
 import { useUi } from "../../lib/state/uiStore";
 import { filterMenu } from "../../lib/menu/filter";
 import { filterByDiet, type DietFilter } from "../../lib/menu/diet";
-import {
-  availableFeatures,
-  FEATURE_LABELS,
-  filterByFeature,
-} from "../../lib/menu/featured";
+import { useSelectedCategory } from "../../lib/menu/routeCategory";
 import { MenuItemCard } from "./MenuItemCard";
 import styles from "./MenuList.module.css";
 
@@ -17,29 +13,24 @@ export function MenuList({
 }: {
   categories: readonly MenuCategory[];
 }) {
-  // The Veg / Non-Veg and Popular / Deals / New Launch chips (plan.md
-  // Phases 1–2, AC-U4) live in uiStore, so a UI command that shows a
-  // category, highlights an item or searches can clear them
-  // (review-report.md finding 3). They reset on reload.
+  // The Veg / Non-Veg chips (plan.md Phases 1–2, AC-U4) live in uiStore,
+  // so a UI command that shows a category, highlights an item or searches
+  // can clear them (review-report.md finding 3). They reset on reload. The
+  // Popular / Deals / New Launch chips are links to /tag/[feature] now
+  // (mcdelivery-parity AC6).
+  const selectedCategory = useSelectedCategory();
   const {
-    selectedCategory,
     searchQuery,
     dietFilter: diet,
-    featureFilter: feature,
     setDietFilter: setDiet,
-    setFeatureFilter: setFeature,
   } = useUi();
-  const features = availableFeatures(categories);
 
-  const visibleCategories = filterByFeature(
-    filterByDiet(
-      filterMenu(categories, {
-        categoryId: selectedCategory,
-        query: searchQuery,
-      }),
-      diet,
-    ),
-    feature,
+  const visibleCategories = filterByDiet(
+    filterMenu(categories, {
+      categoryId: selectedCategory,
+      query: searchQuery,
+    }),
+    diet,
   );
 
   let body;
@@ -51,7 +42,7 @@ export function MenuList({
       <p role="status">
         {searchQuery.trim()
           ? `No items match "${searchQuery.trim()}".`
-          : diet !== null || feature !== null
+          : diet !== null
             ? "No items match these filters."
             : "No items in this category."}
       </p>
@@ -86,21 +77,6 @@ export function MenuList({
 
   return (
     <div className={styles.list}>
-      {features.length > 0 && (
-        <div className={styles.chips} role="group" aria-label="Featured">
-          {features.map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={`${styles.chip} ${styles.featureChip}`}
-              aria-pressed={feature === value}
-              onClick={() => setFeature(feature === value ? null : value)}
-            >
-              {FEATURE_LABELS[value]}
-            </button>
-          ))}
-        </div>
-      )}
       <div className={styles.chips} role="group" aria-label="Dietary filter">
         {dietChip("veg", "Veg")}
         {dietChip("non-veg", "Non-Veg")}

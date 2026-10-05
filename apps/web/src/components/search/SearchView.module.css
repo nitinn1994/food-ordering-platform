@@ -1,0 +1,78 @@
+.search {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.label {
+  font-weight: 700;
+}
+
+.input {
+  min-height: 56px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-price);
+  box-shadow: var(--shadow-search);
+}
+
+.block h2 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-md);
+}
+
+.blockHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.clear {
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: var(--color-danger);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  cursor: pointer;
+}
+
+/* The reference shows 4–5 across on desktop, 2 on mobile; our cards keep
+   the menu's 1-column mobile rows. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 20px 15px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 1199.98px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+}

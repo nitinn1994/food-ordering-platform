@@ -1,0 +1,27 @@
+.bar {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--color-divider);
+  background: var(--color-surface);
+}
+
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  border: none;
+  background: none;
+  color: var(--color-text);
+  font-size: var(--font-size-price);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.back span {
+  font-size: 1.75rem;
+  line-height: 1;
+}

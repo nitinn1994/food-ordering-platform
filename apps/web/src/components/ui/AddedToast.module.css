@@ -1,0 +1,48 @@
+/* Top centre, just under the header, clear of the bottom cart and tab
+   bars and of the nudge toast (bottom right). Empty, it catches no clicks. */
+.region {
+  position: fixed;
+  top: calc(var(--header-height) + var(--space-3));
+  left: 50%;
+  z-index: 25;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: var(--shadow-raised);
+}
+
+.tick {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-success);
+  color: var(--color-on-brand);
+  font-size: var(--font-size-2xs);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .toast {
+    animation: drop 180ms ease-out;
+  }
+}
+
+@keyframes drop {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+}

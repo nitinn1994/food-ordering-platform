@@ -1,0 +1,64 @@
+/* Mobile only (below the 1200px desktop breakpoint). */
+.picks {
+  display: none;
+}
+
+@media (max-width: 1199.98px) {
+  .picks {
+    display: block;
+    margin: var(--space-5) 0 0;
+  }
+}
+
+.title {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-section);
+}
+
+.row {
+  display: flex;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0 0 var(--space-2);
+  overflow-x: auto;
+  list-style: none;
+}
+
+/* Dark text panel over the art keeps the label at 4.5:1 whatever the
+   picture behind it (AC15). */
+.tile {
+  position: relative;
+  display: grid;
+  width: 140px;
+  height: 140px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 16px;
+  background: var(--color-surface-warm);
+  overflow: hidden;
+  text-decoration: none;
+}
+
+.tile:hover {
+  border-color: var(--color-brand-yellow);
+}
+
+.tile img {
+  width: 100%;
+  height: 100%;
+  padding: var(--space-3) var(--space-3) var(--space-6);
+  object-fit: contain;
+}
+
+.label {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  padding: var(--space-2) var(--space-3);
+  background: rgb(43 43 43 / 85%);
+  color: var(--color-on-brand);
+  font-weight: var(--font-weight-heavy);
+  text-align: left;
+  text-transform: uppercase;
+}

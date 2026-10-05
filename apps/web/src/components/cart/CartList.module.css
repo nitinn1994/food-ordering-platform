@@ -1,7 +1,31 @@
+/* mcdelivery-parity AC13: two columns on desktop, one below 1200px. */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 374px;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.order {
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.order h2 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-md);
+}
+
+.aside {
+  display: grid;
+  gap: var(--space-4);
+}
+
 .lines {
   list-style: none;
-  border-bottom: 1px solid var(--color-border);
-  margin: 0 0 1rem;
+  margin: 0;
   padding: 0;
   display: grid;
   gap: 0.75rem;
@@ -9,23 +33,82 @@
 
 .empty {
   display: grid;
+  justify-items: center;
   gap: 0.5rem;
+  padding: var(--space-6) 0;
+  text-align: center;
+  font-weight: 700;
+}
+
+.illustration svg {
+  display: block;
+  width: 140px;
+  height: 140px;
+}
+
+/* The reference's fixed bottom bar. The page keeps its height free at the
+   very end too, so the bar never covers the footer. */
+:global(body):has(.actionBar) {
+  padding-bottom: calc(var(--bottom-nav-space) + var(--cart-bar-height));
+}
+
+/* …and a focused control is scrolled clear of it (WCAG 2.4.11), on
+   desktop too, where nothing else is fixed at the bottom. */
+:global(html):has(.actionBar) {
+  scroll-padding-bottom: calc(var(--bottom-nav-space) + var(--cart-bar-height) + var(--space-4));
+}
+
+.actionBar {
+  position: fixed;
+  right: 0;
+  bottom: var(--bottom-nav-space);
+  left: 0;
+  z-index: 15;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-5);
+  min-height: var(--cart-bar-height);
+  padding: var(--space-2) max(var(--space-4), calc((100vw - var(--content-max-width)) / 2));
+  background: var(--color-surface);
+  box-shadow: 0 -6px 20px rgb(168 124 79 / 20%);
+}
+
+.actionBar p {
+  margin: 0;
 }
 
 .checkoutLink {
   display: inline-flex;
   align-items: center;
-  margin-top: var(--space-4);
-  min-height: 44px;
-  padding: 0 var(--space-5);
-  border-radius: var(--radius-sm);
-  background: var(--color-brand-yellow);
+  min-height: 48px;
+  padding: 0 var(--space-6);
+  border-radius: var(--radius-md);
+  background: var(--color-brand-yellow-cta);
   color: var(--color-text);
   font-weight: var(--font-weight-heavy);
   text-decoration: none;
 }
 
 .checkoutBlocked {
-  margin-top: 1rem;
   color: var(--color-danger);
+}
+
+@media (max-width: 1199.98px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .order {
+    padding: var(--space-4);
+  }
+
+  .actionBar {
+    right: var(--tabbar-gap);
+    left: var(--tabbar-gap);
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-md);
+  }
 }

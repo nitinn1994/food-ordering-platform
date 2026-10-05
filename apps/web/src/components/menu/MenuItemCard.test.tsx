@@ -66,14 +66,17 @@ describe("MenuItemCard — Add to cart", () => {
     }
   });
 
-  it("keeps an unavailable item's button disabled and labelled Unavailable", async () => {
+  // mcdelivery-parity AC6: the reference's sold-out card has no Add button.
+  it("shows an unavailable item as Sold out, with no Add button", async () => {
     await renderWithCart(
       <ul>
         <MenuItemCard item={requireItem("gelato")} />
       </ul>,
     );
 
-    expect(screen.getByRole("button", { name: "Unavailable" })).toBeDisabled();
+    expect(screen.getByText("Sold out")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Add/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("listitem")).toHaveClass(/unavailable/);
   });
 });
 

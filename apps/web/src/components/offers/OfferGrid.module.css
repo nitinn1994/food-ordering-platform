@@ -1,0 +1,88 @@
+.offers {
+  display: grid;
+  gap: var(--space-5);
+}
+
+.searchRow {
+  display: grid;
+  gap: var(--space-2);
+  max-width: 420px;
+}
+
+.label {
+  font-weight: 700;
+}
+
+.input {
+  min-height: 48px;
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-search);
+}
+
+/* 4 across on desktop, 1 on mobile (AC9). */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: 0 0 8px rgb(0 0 0 / 10%);
+}
+
+.card p {
+  margin: 0;
+}
+
+/* Greyscale only: fading the card too would take its text below 4.5:1
+   (AC15). */
+.dimmed {
+  filter: grayscale(1);
+}
+
+.tag {
+  justify-self: start;
+  padding: 2px var(--space-2);
+  border-radius: 5px;
+  background: var(--color-brand-red);
+  color: var(--color-on-brand);
+  font-size: var(--font-size-2xs);
+  font-weight: 700;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-body);
+}
+
+.description,
+.minimum {
+  color: var(--color-muted);
+  font-size: var(--font-size-sm);
+}
+
+.code strong {
+  padding: 2px var(--space-2);
+  border: 1px dashed var(--color-accent-strong);
+  border-radius: var(--radius-xs);
+  background: var(--color-surface-warm);
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 1199.98px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

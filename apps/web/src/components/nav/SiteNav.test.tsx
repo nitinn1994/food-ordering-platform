@@ -24,22 +24,23 @@ function AddTiramisuButton() {
 }
 
 describe("SiteNav", () => {
-  it("shows Menu and Cart links with the backend's cart count", async () => {
+  // mcdelivery-parity AC2: the "Menu" text link gave way to the
+  // reference's search and cart icons; the brand link is the way home.
+  it("shows Search and Cart links, with the backend's cart count as a badge", async () => {
     await renderWithCart(<SiteNav />, {
       cart: pricedCart([{ itemId: "tiramisu", quantity: 2 }]),
     });
 
-    expect(screen.getByRole("link", { name: "Menu" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Cart (2)" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Search" })).toHaveAttribute("href", "/search");
+    const cart = screen.getByRole("link", { name: "Cart (2)" });
+    expect(cart).toHaveAttribute("href", "/cart");
+    expect(cart).toHaveTextContent("2");
   });
 
-  it("marks the current route with aria-current", async () => {
+  it("marks only the current route with aria-current", async () => {
     await renderWithCart(<SiteNav />, { cart: EMPTY_CART });
 
-    expect(screen.getByRole("link", { name: "Menu" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
+    expect(screen.getByRole("link", { name: "Search" })).not.toHaveAttribute("aria-current");
     expect(
       screen.getByRole("link", { name: "Cart (0)" }),
     ).not.toHaveAttribute("aria-current");
@@ -64,6 +65,7 @@ describe("SiteNav", () => {
     await renderWithCart(<SiteNav />, { cart: () => response.promise });
 
     expect(screen.getByRole("link", { name: "Cart" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Cart" })).toHaveTextContent("");
 
     await act(async () => response.resolve(jsonResponse(EMPTY_CART)));
     expect(screen.getByRole("link", { name: "Cart (0)" })).toBeInTheDocument();
@@ -77,6 +79,25 @@ describe("SiteNav", () => {
 });
 
 describe("SiteNav — header (mcdelivery-redesign Phase 1)", () => {
+  it("orders the header like the reference (mcdelivery-parity AC2)", async () => {
+    await renderWithCart(<SiteNav />, { cart: EMPTY_CART });
+
+    const names = Array.from(
+      screen.getByRole("banner").querySelectorAll('[data-layout="desktop"] :is(a, button)'),
+      (el) => el.getAttribute("aria-label") ?? el.textContent,
+    );
+    expect(names).toEqual([
+      `${BRAND_NAME} home`,
+      "Delivery (coming soon)",
+      "Set your location to see delivery options near you Now (coming soon)",
+      "Offers",
+      "Restaurants Nearby",
+      "Account",
+      "Search",
+      "Cart (0)",
+    ]);
+  });
+
   it("links the placeholder brand home", async () => {
     await renderWithCart(<SiteNav />, { cart: EMPTY_CART });
 
@@ -86,11 +107,20 @@ describe("SiteNav — header (mcdelivery-redesign Phase 1)", () => {
     );
   });
 
+  // mcdelivery-parity Phase 4: Offers, Restaurants Nearby and Account are
+  // links now; only the delivery controls stay placeholders.
+  it.each([
+    ["Offers", "/offers"],
+    ["Restaurants Nearby", "/restaurants-nearby"],
+    ["Account", "/profile"],
+  ])("links %s to %s", async (name, href) => {
+    await renderWithCart(<SiteNav />, { cart: EMPTY_CART });
+
+    expect(screen.getByRole("link", { name })).toHaveAttribute("href", href);
+  });
+
   it.each([
     "Delivery (coming soon)",
-    "Offers (coming soon)",
-    "Restaurants Nearby (coming soon)",
-    "Account (coming soon)",
   ])("renders %s as a focusable, unavailable placeholder", async (name) => {
     await renderWithCart(<SiteNav />, { cart: EMPTY_CART });
 
@@ -104,7 +134,7 @@ describe("SiteNav — header (mcdelivery-redesign Phase 1)", () => {
 
     expect(
       screen.getByRole("button", {
-        name: "Set your location to see delivery options near you, Now (coming soon)",
+        name: "Set your location to see delivery options near you Now (coming soon)",
       }),
     ).toHaveAttribute("aria-disabled", "true");
   });

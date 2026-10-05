@@ -6,15 +6,21 @@
   color-scheme: light;
 
   /* Brand */
-  --color-brand-red: #da0005;
+  --color-brand-red: #db0007;
   --color-brand-red-dark: #b00004;
   --color-brand-yellow: #ffbc0b;
   --color-brand-yellow-dark: #f2ad00;
+  /* mcdelivery-parity: the reference's measured CTA yellow (strip, app
+     band, active rail bar) and pale tint (category discs, active filters).
+     reference-inventory.md "Design tokens". */
+  --color-brand-yellow-cta: #fbb900;
+  --color-brand-yellow-tint: #fcecc7;
 
   /* Surfaces and text */
   --color-bg: #fbf6f0;
   --color-surface: #ffffff;
   --color-surface-warm: #fff8e6;
+  --color-tile: #f9f9f9; /* mobile category tiles */
   --color-text: #2b2b2b;
   --color-on-brand: #ffffff;
   --color-muted: #6d6d6d;
@@ -22,6 +28,11 @@
   --color-accent-strong: #7d5630;
   --color-border: #ecdcc8;
   --color-border-strong: #d8c3a8;
+  --color-border-input: #c4c4c4;
+  --color-divider: #e5e5e5;
+  /* The black hero band and footer. */
+  --color-ink: #000000;
+  --color-on-ink: #ffffff;
 
   /* Status */
   --color-veg: #1b8a3a;
@@ -31,7 +42,10 @@
   --color-focus: #1a5fb4;
   --color-highlight: #fff1c2;
 
-  /* Shape */
+  /* Shape. The reference's muted #909090 and tan #b69a81 text are below
+     4.5:1 on white, so --color-muted / --color-accent stay at their
+     accessible values (mcdelivery-parity AC1, AC15). */
+  --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 16px;
@@ -48,7 +62,10 @@
   /* Elevation */
   --shadow-card: 0 2px 10px rgb(43 43 43 / 6%);
   --shadow-raised: 0 6px 20px rgb(43 43 43 / 12%);
-  --shadow-header: 0 2px 8px rgb(0 0 0 / 8%);
+  --shadow-header: 0 2px 6px rgb(0 0 0 / 12%);
+  --shadow-chip: 0 4px 20px rgb(167 167 167 / 14%);
+  --shadow-search: 0 5px 20px rgb(96 100 112 / 10%);
+  --shadow-modal: 0 28px 48px rgb(0 0 0 / 40%);
 
   /* Type — a heavy system stack; the reference's typeface is proprietary
      (OQ6). */
@@ -56,14 +73,52 @@
     "Helvetica Neue", Helvetica, Arial, system-ui, -apple-system, "Segoe UI",
     sans-serif;
   --font-weight-heavy: 800;
+  /* The reference's type scale (reference-inventory.md "Typography"). */
+  --font-size-display: 3.375rem; /* 54px: static page h1 */
+  --font-size-page: 2.75rem; /* 44px: "Our Menu" */
+  --font-size-xl: 2.25rem; /* 36px */
+  --font-size-lg: 1.5625rem; /* 25px: category title */
+  --font-size-section: 1.5rem; /* 24px: mobile section titles */
+  --font-size-md: 1.25rem; /* 20px: cart title, SEO h2 */
+  --font-size-price: 1.125rem; /* 18px */
+  --font-size-nav: 1.0625rem; /* 17px: header links */
+  --font-size-body: 1rem; /* 16px */
+  --font-size-sm: 0.875rem; /* 14px */
+  --font-size-xs: 0.8125rem; /* 13px: chips */
+  --font-size-2xs: 0.75rem; /* 12px: filter pills, meta */
 
-  /* Layout */
+  /* Layout. The header is 96px at the desktop breakpoint (below).
+     Breakpoint: the desktop layout starts at 1200px. Custom properties
+     cannot be used inside @media, so modules write the literal
+     `(min-width: 1200px)` / `(max-width: 1199.98px)` (mcdelivery-parity
+     plan.md, AC3). */
   --header-height: 72px;
   --content-max-width: 1320px;
   /* The fixed cart bar on narrow screens (CartPanel.module.css), and what
      is laid out around it — one value, so they cannot drift
      (review-report.md finding 2). */
   --cart-bar-height: 64px;
+  /* mcdelivery-parity Phase 2: the floating bottom tab bar below 1200px,
+     and the space it takes from the bottom of the viewport (bar plus its
+     gap above and below). 0 on desktop, where there is no tab bar. */
+  --tabbar-height: 64px;
+  --tabbar-gap: 10px;
+  --bottom-nav-space: 0px;
+}
+
+@media (min-width: 1200px) {
+  :root {
+    --header-height: 96px;
+  }
+}
+
+/* Below 1200px the header is the mobile toolbar (or the "‹ Back" bar on
+   inner pages) and the tab bar floats at the bottom. */
+@media (max-width: 1199.98px) {
+  :root {
+    --header-height: 130px; /* the mobile toolbar, measured */
+    --bottom-nav-space: calc(var(--tabbar-height) + 2 * var(--tabbar-gap));
+  }
 }
 
 * {
@@ -76,9 +131,15 @@ html {
   scroll-padding-top: calc(var(--header-height) + var(--space-4));
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1199.98px) {
   html {
-    scroll-padding-bottom: calc(var(--cart-bar-height) + var(--space-4));
+    scroll-padding-bottom: calc(
+      var(--bottom-nav-space) + var(--cart-bar-height) + var(--space-4)
+    );
+  }
+
+  body {
+    padding-bottom: var(--bottom-nav-space);
   }
 }
 

@@ -1,7 +1,10 @@
-import type { MenuCategory, MenuItemBadge, MenuItemFeature } from "@contracts/api-contracts";
-import type { FeatureFilter } from "../state/uiStore";
-
-export type { FeatureFilter };
+import {
+  MENU_ITEM_FEATURES,
+  type MenuCategory,
+  type MenuItem,
+  type MenuItemBadge,
+  type MenuItemFeature,
+} from "@contracts/api-contracts";
 
 // The "Our Menu" chips and card badges (docs/features/mcdelivery-redesign/
 // requirements.md AC-U3, AC-U4), driven by the menu's optional `featured`
@@ -21,10 +24,11 @@ export const BADGE_LABELS: Readonly<Record<MenuItemBadge, string>> = {
 
 
 // Narrows items within each category and drops categories left empty, like
-// filterMenu and filterByDiet — the three compose.
+// filterMenu and filterByDiet. Used by featuredItems (the /tag pages and
+// search's popular items).
 export function filterByFeature(
   categories: readonly MenuCategory[],
-  feature: FeatureFilter,
+  feature: MenuItemFeature | null,
 ): MenuCategory[] {
   if (feature === null) {
     return [...categories];
@@ -46,4 +50,19 @@ export function availableFeatures(categories: readonly MenuCategory[]): MenuItem
   return (Object.keys(FEATURE_LABELS) as MenuItemFeature[]).filter((feature) =>
     present.has(feature),
   );
+}
+
+// The /tag/[feature] route segment (mcdelivery-parity AC6): only the
+// contract's own features are pages; anything else is a 404.
+export function isMenuItemFeature(value: string): value is MenuItemFeature {
+  return (MENU_ITEM_FEATURES as readonly string[]).includes(value);
+}
+
+// Every item carrying the feature, in menu order, flattened for the tag
+// page's grid.
+export function featuredItems(
+  categories: readonly MenuCategory[],
+  feature: MenuItemFeature,
+): MenuItem[] {
+  return filterByFeature(categories, feature).flatMap((category) => category.items);
 }

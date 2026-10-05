@@ -1,0 +1,58 @@
+.band {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-6);
+  padding: 42px var(--space-5) 65px;
+  background: var(--color-brand-yellow-cta);
+  color: var(--color-ink);
+}
+
+.mark {
+  flex: none;
+}
+
+.copy p {
+  margin: 0;
+}
+
+/* Red on CTA yellow is under 4.5:1, so the small uppercase eyebrow is ink
+   with a red rule rather than red text (AC15). */
+.eyebrow {
+  display: inline-block;
+  padding-bottom: var(--space-1);
+  border-bottom: 3px solid var(--color-brand-red);
+  font-size: var(--font-size-price);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.title {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: 1.375rem;
+}
+
+.text {
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+
+.cta {
+  margin-top: var(--space-4);
+  padding: 12px 43px;
+  border: none;
+  border-radius: 25px;
+  background: var(--color-ink);
+  color: var(--color-on-ink);
+  font-size: 1.1875rem;
+  font-weight: 700;
+  cursor: default;
+}
+
+/* Desktop only, as on the reference. */
+@media (max-width: 1199.98px) {
+  .band {
+    display: none;
+  }
+}

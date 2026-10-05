@@ -22,6 +22,10 @@ function cssModules(dir: string): string[] {
 }
 
 describe("design tokens", () => {
+  it("makes the header 96px at the 1200px desktop breakpoint (mcdelivery-parity AC2)", () => {
+    expect(globals).toMatch(/@media \(min-width: 1200px\)\s*{\s*:root\s*{\s*--header-height: 96px;/);
+  });
+
   it.each([
     "--color-brand-red",
     "--color-brand-yellow",
@@ -33,6 +37,16 @@ describe("design tokens", () => {
     "--radius-md",
     "--radius-pill",
     "--space-4",
+    // mcdelivery-parity AC1
+    "--color-brand-yellow-cta",
+    "--color-brand-yellow-tint",
+    "--color-ink",
+    "--color-on-ink",
+    "--radius-xs",
+    "--shadow-modal",
+    "--font-size-page",
+    "--font-size-lg",
+    "--header-height",
   ])("defines %s", (token) => {
     expect(globals).toMatch(new RegExp(`${token}:`));
   });
@@ -42,7 +56,7 @@ describe("design tokens", () => {
   });
 
   it("keeps brand colour hex values out of component CSS modules", () => {
-    const brandHex = /#(da0005|b00004|ffbc0b|f2ad00|fbf6f0)\b/i;
+    const brandHex = /#(db0007|da0005|b00004|ffbc0b|f2ad00|fbb900|fcecc7|fbf6f0)\b/i;
     const offenders = cssModules(srcDir).filter((file) =>
       brandHex.test(readFileSync(file, "utf8")),
     );
@@ -79,6 +93,12 @@ describe("design tokens — text contrast (AC-U8)", () => {
     ["--color-on-brand", "--color-brand-red"],
     ["--color-on-brand", "--color-accent-strong"],
     ["--color-danger", "--color-surface"],
+    // mcdelivery-parity AC1, AC15
+    ["--color-text", "--color-brand-yellow-cta"],
+    ["--color-text", "--color-brand-yellow-tint"],
+    ["--color-on-ink", "--color-ink"],
+    ["--color-on-brand", "--color-ink"],
+    ["--color-ink", "--color-brand-yellow-cta"],
   ])("%s on %s is at least 4.5:1", (text, background) => {
     expect(contrast(tokenValue(text), tokenValue(background))).toBeGreaterThanOrEqual(4.5);
   });

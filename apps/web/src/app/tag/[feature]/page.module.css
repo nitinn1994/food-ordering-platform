@@ -1,0 +1,43 @@
+/* The reference's tag-page title band and 4-across grid of 319px cards
+   (reference-inventory.md §3). */
+.band {
+  padding: var(--space-6) var(--space-4) var(--space-4);
+  text-align: center;
+}
+
+.title {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, var(--font-size-display));
+}
+
+.container {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: 0 var(--space-4) var(--space-6);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 319px));
+  justify-content: center;
+  gap: 20px 15px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (max-width: 1199.98px) {
+  .band {
+    padding: var(--space-4) var(--space-4) var(--space-3);
+    text-align: left;
+  }
+
+  .container {
+    padding: 0 var(--space-3) var(--space-6);
+  }
+
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+}

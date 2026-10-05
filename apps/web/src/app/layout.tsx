@@ -6,6 +6,9 @@ import { NudgeProvider } from "../lib/nudges/NudgeProvider";
 import { AgentTurnProvider } from "../lib/agent/AgentTurnProvider";
 import { VoiceShell } from "../components/voice/VoiceShell";
 import { SiteNav } from "../components/nav/SiteNav";
+import { SiteFooter } from "../components/layout/SiteFooter";
+import { MobileTabBar } from "../components/nav/MobileTabBar";
+import { AddedToast } from "../components/ui/AddedToast";
 import { CartAnnouncer } from "../components/cart/CartAnnouncer";
 import { BRAND_NAME, BRAND_TAGLINE } from "../lib/brand";
 import "./globals.css";
@@ -31,7 +34,10 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 <VoiceShell>
                   <SiteNav />
                   <CartAnnouncer />
+                  <AddedToast />
                   {children}
+                  <SiteFooter />
+                  <MobileTabBar />
                 </VoiceShell>
               </AgentTurnProvider>
             </NudgeProvider>

@@ -1,0 +1,8 @@
+/* The centred column the error page renders in: the old
+   page.module.css .main rule, kept here when the home page went full
+   width and moved into (home)/ (mcdelivery-parity Phases 1 and 3). */
+.main {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4) var(--space-6);
+}
